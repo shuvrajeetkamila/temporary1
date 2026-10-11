@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#06151a" />
+    <meta name="description" content="NAURU: The Countryside — an original 1:1-scale open-world island prototype." />
+    <link rel="icon" href="/island-mark.svg" type="image/svg+xml" />
+    <title>NAURU: The Countryside</title>
+  </head>
+  <body>
+    <div id="game-root">
+      <canvas id="game-canvas" aria-label="3D game view"></canvas>
+
+      <div id="vignette"></div>
+      <div id="cinematic-bars" aria-hidden="true"><i></i><i></i></div>
+
+      <header id="top-hud" class="hud hidden-until-start">
+        <section class="location-card glass">
+          <span class="eyebrow">CURRENT DISTRICT</span>
+          <strong id="location-name">YAREN</strong>
+          <span id="location-detail">Airport coastal belt</span>
+        </section>
+        <section class="world-status glass">
+          <span id="weather-icon" aria-hidden="true">☀</span>
+          <span><b id="clock">08:24</b><small id="weather-label">CLEAR</small></span>
+        </section>
+      </header>
+
+      <aside id="mission-card" class="glass hidden-until-start">
+        <span class="eyebrow">FREE ROAM</span>
+        <strong id="objective-title">Explore the island</strong>
+        <p id="objective-copy">Find the Island Runner and press <kbd>E</kbd> to drive.</p>
+      </aside>
+
+      <div id="interaction-prompt" class="glass" aria-live="polite">
+        <kbd>E</kbd><span id="interaction-text">Enter Island Runner</span>
+      </div>
+
+      <section id="bottom-hud" class="hud hidden-until-start">
+        <div class="minimap-shell glass">
+          <canvas id="minimap" width="240" height="240" aria-label="Island minimap"></canvas>
+          <span class="map-north">N</span>
+          <span class="map-scale">1 km</span>
+        </div>
+        <div id="vehicle-hud" class="vehicle-hud glass">
+          <span class="gear" id="gear">P</span>
+          <div><strong id="speed">000</strong><small>KM/H</small></div>
+          <div class="rpm"><i id="rpm-bar"></i></div>
+          <span id="surface-label">ASPHALT</span>
+        </div>
+        <div class="control-hints glass">
+          <span><kbd>WASD</kbd> MOVE</span>
+          <span><kbd>SHIFT</kbd> SPRINT</span>
+          <span><kbd>E</kbd> USE</span>
+          <span><kbd>M</kbd> MAP</span>
+          <span><kbd>V</kbd> CAMERA</span>
+          <span><kbd>ESC</kbd> MENU</span>
+        </div>
+      </section>
+
+      <div id="crosshair" class="hidden-until-start"><i></i></div>
+      <div id="toast" role="status" aria-live="polite"></div>
+      <div id="discovery-banner" aria-live="polite">
+        <span>LOCATION DISCOVERED</span><strong id="discovery-name">Nauru International Airport</strong>
+      </div>
+
+      <section id="world-map" class="overlay-panel" aria-hidden="true">
+        <div class="map-panel glass">
+          <header>
+            <div><span class="eyebrow">ISLAND OVERVIEW</span><h2>Republic of Nauru</h2></div>
+            <div class="map-stats"><span>APPROX. 1:1</span><b>1 UNIT = 1 METRE</b></div>
+          </header>
+          <div class="big-map-wrap"><canvas id="big-map" width="1100" height="760"></canvas></div>
+          <footer><span><i class="legend player"></i> YOU</span><span><i class="legend vehicle"></i> VEHICLE</span><span><i class="legend road"></i> ROAD</span><span><i class="legend landmark"></i> LANDMARK</span><em>Press M to close</em></footer>
+        </div>
+      </section>
+
+      <section id="pause-menu" class="overlay-panel" aria-hidden="true">
+        <div class="pause-card glass">
+          <span class="eyebrow">NAURU: THE COUNTRYSIDE</span>
+          <h2>Paused</h2>
+          <button id="resume-button" class="primary-button">RESUME EXPLORATION</button>
+          <div class="setting-block">
+            <label>GRAPHICS PRESET <output id="quality-output">MEDIUM</output></label>
+            <div id="quality-buttons" class="segmented">
+              <button data-quality="low">LOW</button><button data-quality="medium">MEDIUM</button><button data-quality="high">HIGH</button><button data-quality="ultra">ULTRA</button>
+            </div>
+          </div>
+          <div class="setting-row"><span>Mouse sensitivity</span><input id="sensitivity" type="range" min="0.3" max="1.8" value="1" step="0.1" /></div>
+          <div class="menu-actions"><button id="save-button">SAVE NOW</button><button id="reset-button">RESET TO AIRPORT</button></div>
+          <small>Prototype 0.1 · All art, code, vehicles and audio are original/procedural.</small>
+        </div>
+      </section>
+
+      <section id="splash" class="splash visible">
+        <div class="splash-bg"><div class="sun-disc"></div><div class="island-silhouette"></div></div>
+        <div class="splash-content">
+          <div class="brand-lockup">
+            <span class="brand-kicker">AN OPEN ISLAND PROTOTYPE</span>
+            <h1><b>NAURU</b><small>THE COUNTRYSIDE</small></h1>
+            <p>Walk, drive and discover a continuous, geographically scaled Pacific island.</p>
+          </div>
+          <div class="build-badge"><i></i><span>PLAYABLE MILESTONE</span><b>PHASE 1</b></div>
+          <div class="start-actions">
+            <button id="start-button" class="primary-button"><span>BEGIN FREE ROAM</span><small>New game</small></button>
+            <button id="continue-button" class="secondary-button"><span>CONTINUE</span><small>Resume last autosave</small></button>
+          </div>
+          <div class="splash-footer"><span>WASD to move · Mouse to look · E to enter vehicle</span><span>Original assets · No proprietary map imagery</span></div>
+        </div>
+        <div id="loading-screen">
+          <div class="loader-mark"><i></i></div><strong>PREPARING NAURU</strong><span id="loading-label">Generating island sectors…</span><div class="loading-track"><i id="loading-bar"></i></div>
+        </div>
+      </section>
+
+      <aside id="debug-panel" class="glass">
+        <b>WORLD STREAMER</b><span id="debug-fps">60 FPS</span><span id="debug-sectors">0 / 0 sectors</span><span id="debug-position">0, 0, 0</span><span id="debug-tris">0 triangles</span>
+      </aside>
+
+      <noscript>This game requires JavaScript and WebGL.</noscript>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

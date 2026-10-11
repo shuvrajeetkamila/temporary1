@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.neu/
+bin/
+release/*
+!release/NauruCountryside-Windows-x64.exe
+.tmp-windows-build/
+.tmp-download/
+*.log
+.DS_Store
+.vscode/
