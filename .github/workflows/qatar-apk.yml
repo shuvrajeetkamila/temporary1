@@ -31,6 +31,7 @@ jobs:
       - name: Unit tests and debug APK
         shell: bash
         run: |
+          set +e
           set -o pipefail
           gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug 2>&1 | tee artifacts/gradle.log
           status=${PIPESTATUS[0]}
