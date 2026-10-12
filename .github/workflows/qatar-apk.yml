@@ -1,0 +1,47 @@
+name: Qatar Android APK
+
+on:
+  push:
+    branches: ["arena/3b05e45c-temporary1"]
+    paths:
+      - "qatar-android/**"
+      - ".github/workflows/qatar-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-stage:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qatar-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Reset current QA state
+        run: rm -rf artifacts && mkdir -p artifacts
+      - name: Unit tests and debug APK
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - name: Validate packaged world gate
+        run: |
+          test "$(sed -n '1p' app/src/main/assets/world/qatar_world_manifest.txt)" = "QTRWORLD"
+          test "$(sed -n '3p' app/src/main/assets/world/qatar_world_manifest.txt)" -ge 8
+          test -f app/build/outputs/apk/debug/app-debug.apk
+      - name: Stage current build only
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk
+          sha256sum artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk > artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk.sha256
+          unzip -t artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qatar-The-Peninsula-v0.1.0-toolchain-debug
+          path: qatar-android/artifacts/
+          if-no-files-found: error
