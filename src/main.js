@@ -9,6 +9,7 @@ import { ThirdPersonCamera } from './camera/ThirdPersonCamera.js';
 import { HUD } from './ui/HUD.js';
 import { AudioSystem } from './audio/AudioSystem.js';
 import { SaveSystem } from './save/SaveSystem.js';
+import { LANDMARKS } from './data/landmarks.js';
 
 const canvas = document.getElementById('game-canvas');
 const initialQualityKey = detectQuality();
@@ -65,6 +66,23 @@ function getState() {
   currentFocus();
   return { player, vehicle, world, hud, inVehicle, focus, cameraYaw: cameraRig.yaw, atmosphere: world.atmosphere };
 }
+
+function setWaypointFromMap({ x, z }) {
+  if (world.coastDistanceAt(x, z) < 0) {
+    hud.toast('Place waypoints on Nauru, not in the ocean');
+    return;
+  }
+  const landmark = LANDMARKS
+    .map((entry) => ({ entry, distance: Math.hypot(x - entry.x, z - entry.z) }))
+    .sort((a, b) => a.distance - b.distance)[0];
+  const target = landmark?.distance < 230
+    ? { ...landmark.entry, landmarkId: landmark.entry.id }
+    : { x, z, name: 'Custom waypoint', detail: world.locationAt(x, z).detail };
+  world.navigation.setWaypoint(target);
+  hud.toast(`GPS set: ${target.name}`);
+  setMap(false);
+}
+hud.setWaypointHandler(setWaypointFromMap);
 
 function enterVehicle() {
   if (inVehicle) return;
@@ -203,6 +221,10 @@ document.addEventListener('visibilitychange', () => {
 
 function processActions() {
   if (input.consume('KeyM')) { setMap(!mapOpen); return; }
+  if (input.consume('KeyX') && world.navigation.active) {
+    world.navigation.clear();
+    hud.toast('GPS waypoint cleared');
+  }
   if (input.consume('F3')) hud.toggleDebug();
   if (input.consume('F6')) { saves.save(getState()); hud.toast('Quick save complete'); }
   if (input.consume('KeyK')) document.body.classList.toggle('cinematic');
@@ -238,6 +260,7 @@ function update(dt) {
   const target = inVehicle ? vehicle.getTarget(cameraTarget) : player.getTarget(cameraTarget);
   cameraRig.update(input, target, inVehicle ? 'vehicle' : 'player', inVehicle ? vehicle.yaw : player.facing, inVehicle ? vehicle.speed : player.speed, dt);
   currentFocus();
+  world.navigation.update(focus, inVehicle ? vehicle.yaw : player.facing);
   world.update(dt, elapsed, focus);
   const nearVehicle = !inVehicle && vehicle.distanceTo(player.object.position) < 7.5;
   hud.setPrompt(nearVehicle || inVehicle, inVehicle ? (vehicle.speedKmh <= 5 ? 'Exit Island Runner' : 'Slow down to exit') : 'Enter Island Runner');

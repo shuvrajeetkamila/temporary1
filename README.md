@@ -7,10 +7,10 @@ A working Phase 1 open-world prototype of Nauru. It is a real-time third-person 
 **[NauruCountryside-Windows-x64.exe](release/NauruCountryside-Windows-x64.exe)**
 
 - Windows 10/11 x64
-- Single portable 643 KB executable; no installer
+- Single portable ~651 KiB executable; no installer
 - Game code and assets are embedded and work offline
 - Opens in a dedicated Microsoft Edge app window (falls back to the default browser)
-- SHA-256: `4d7edaa99b5dd4d1b959efb7ff3a0f5f7b5b738a251d0390be3e3f8f83dfce4c`
+- SHA-256: `ed5e28c3d3220fec5ae231d88eaeb8bc839a4adc49757f32c5b3bc6cd00803e0`
 
 Windows may show an “unknown publisher” warning because this prototype is not code-signed. The launcher source is in [`scripts/windows/launcher.c`](scripts/windows/launcher.c).
 
@@ -26,7 +26,7 @@ Windows may show an “unknown publisher” warning because this prototype is no
 - Original **Island Runner** car with acceleration, braking, reverse, steering, traction, handbrake, wheel motion and terrain response
 - Third- and first-person cameras with mouse orbit, zoom and ground collision avoidance
 - Day/night lighting and clear, cloudy, rain and storm weather states
-- Island map, minimap, districts, discovery markers and vehicle HUD
+- Island map, minimap, districts, discovery markers, clickable GPS waypoints and vehicle HUD
 - Low/Medium/High/Ultra presets, sector LOD, instancing and autosave
 - Procedural engine, ocean, rain, wind and footstep audio
 
@@ -42,7 +42,8 @@ Windows may show an “unknown publisher” warning because this prototype is no
 | `E` | Enter or exit the car |
 | `V` | Toggle first/third person |
 | Mouse wheel | Camera distance |
-| `M` | Island map |
+| `M` | Island map — click land to set a GPS waypoint |
+| `X` | Clear active GPS waypoint |
 | `T` | Cycle weather |
 | `Backspace` | Reset player/car to airport |
 | `F6` | Quick save |
