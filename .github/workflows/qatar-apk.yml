@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-test-stage:
@@ -55,6 +55,17 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk
           sha256sum artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk > artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk.sha256
           unzip -t artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk
+      - name: Publish tested debug APK to this working branch
+        if: github.ref == 'refs/heads/arena/3b05e45c-temporary1'
+        run: |
+          mkdir -p release
+          cp artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk release/
+          cp artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk.sha256 release/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add release/
+          git diff --cached --quiet || git commit -m 'Publish tested Qatar toolchain APK [skip ci]'
+          git push
       - uses: actions/upload-artifact@v4
         if: always()
         with:
