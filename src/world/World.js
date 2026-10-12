@@ -4,6 +4,7 @@ import { Ocean } from './Ocean.js';
 import { Roads } from './Roads.js';
 import { Environment } from './Environment.js';
 import { Atmosphere } from './Atmosphere.js';
+import { Navigation } from './Navigation.js';
 import { coastDistance, terrainHeight, terrainNormal, terrainRegion } from '../core/terrainModel.js';
 import { DISTRICTS, LANDMARKS } from '../data/landmarks.js';
 import { wrapAngle } from '../core/math.js';
@@ -24,6 +25,7 @@ export class World {
     this.root.add(this.roads.group);
     this.environment = new Environment(scene, this.roads, quality);
     this.atmosphere = new Atmosphere(scene, quality, this.ocean);
+    this.navigation = new Navigation();
   }
 
   update(dt, elapsed, focusPosition) {

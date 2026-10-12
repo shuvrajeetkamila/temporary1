@@ -1,6 +1,7 @@
 import { COASTLINE, ISLAND_BOUNDS } from '../data/nauruCoastline.js';
 import { LANDMARKS } from '../data/landmarks.js';
 import { clamp } from '../core/math.js';
+import { formatNavigationDistance } from '../world/Navigation.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -29,6 +30,13 @@ export class HUD {
     this.minimap = byId('minimap');
     this.bigMap = byId('big-map');
     this.debugPanel = byId('debug-panel');
+    this.navigationCard = byId('navigation-card');
+    this.navigationName = byId('navigation-name');
+    this.navigationDistance = byId('navigation-distance');
+    this.navigationBearing = byId('navigation-bearing');
+    this.navigationArrow = byId('navigation-arrow');
+    this.waypointHandler = null;
+    this.bigMap.addEventListener('click', (event) => this.#handleMapClick(event));
     this.discovered = new Set(JSON.parse(localStorage.getItem('nauru.discovered') || '[]'));
     this.lastLocationId = '';
     this.mapTimer = 0;
@@ -53,6 +61,7 @@ export class HUD {
     this.gear.textContent = vehicle.gear;
     this.rpm.style.width = `${Math.round(vehicle.rpm * 100)}%`;
     this.surface.textContent = vehicle.surface;
+    this.#updateNavigation(this.world.navigation.status);
 
     if (location.landmark && location.id !== this.lastLocationId && !this.discovered.has(location.id)) {
       this.discovered.add(location.id);
@@ -100,6 +109,7 @@ export class HUD {
     context.fillRect(0, 0, width, height);
     this.#drawIsland(context, project, false);
     this.#drawRoads(context, project, 1.8);
+    this.#drawNavigationRoute(context, project, focus.x, focus.z, false);
     for (const landmark of LANDMARKS) {
       if (!this.discovered.has(landmark.id)) continue;
       const [x, y] = project([landmark.x, landmark.z]);
@@ -142,6 +152,8 @@ export class HUD {
     const project = ([x, z]) => [width * .5 + (x - centreX) * scale, height * .5 + (z - centreZ) * scale];
     this.#drawIsland(context, project, true);
     this.#drawRoads(context, project, 3.2);
+    const actor = inVehicle ? vehicle : player;
+    this.#drawNavigationRoute(context, project, actor.object.position.x, actor.object.position.z, true);
 
     for (const landmark of LANDMARKS) {
       const [x, y] = project([landmark.x, landmark.z]);
@@ -156,7 +168,6 @@ export class HUD {
     }
     const [carX, carY] = project([vehicle.position.x, vehicle.position.z]);
     context.fillStyle = '#e6c775'; context.beginPath(); context.arc(carX, carY, 5, 0, Math.PI * 2); context.fill();
-    const actor = inVehicle ? vehicle : player;
     const yaw = inVehicle ? vehicle.yaw : player.facing;
     const [px, py] = project([actor.object.position.x, actor.object.position.z]);
     this.#drawMarker(context, px, py, yaw, '#ffffff', '#56ebcf', 10);
@@ -169,6 +180,58 @@ export class HUD {
     const scalePixels = 1000 * scale;
     context.strokeStyle = 'rgba(255,255,255,.6)'; context.lineWidth = 2; context.beginPath(); context.moveTo(28, height - 30); context.lineTo(28 + scalePixels, height - 30); context.stroke();
     context.fillText('1 KM', 28, height - 38);
+  }
+
+  #updateNavigation(status) {
+    const active = Boolean(status?.active);
+    this.navigationCard.classList.toggle('active', active);
+    if (!active) return;
+    const waypoint = status.waypoint;
+    this.navigationName.textContent = waypoint.name.toUpperCase();
+    this.navigationDistance.textContent = status.arrived ? 'ARRIVED' : formatNavigationDistance(status.distance);
+    this.navigationBearing.textContent = status.arrived ? 'DESTINATION' : `${String(status.heading).padStart(3, '0')}°`;
+    this.navigationArrow.style.transform = `rotate(${status.relativeBearing * 180 / Math.PI}deg)`;
+    if (status.justArrived) this.toast(`Arrived at ${waypoint.name}`, 3.2);
+  }
+
+  #drawNavigationRoute(context, project, fromX, fromZ, fullMap) {
+    const status = this.world.navigation.status;
+    if (!status?.active) return;
+    const [fromScreenX, fromScreenY] = project([fromX, fromZ]);
+    const [targetScreenX, targetScreenY] = project([status.waypoint.x, status.waypoint.z]);
+    context.save();
+    context.strokeStyle = status.arrived ? 'rgba(230,199,117,.85)' : 'rgba(86,235,207,.95)';
+    context.fillStyle = status.arrived ? '#e6c775' : '#56ebcf';
+    context.lineWidth = fullMap ? 2.8 : 1.4;
+    context.setLineDash(fullMap ? [7, 5] : [4, 3]);
+    context.beginPath(); context.moveTo(fromScreenX, fromScreenY); context.lineTo(targetScreenX, targetScreenY); context.stroke();
+    context.setLineDash([]);
+    context.beginPath(); context.arc(targetScreenX, targetScreenY, fullMap ? 8 : 5, 0, Math.PI * 2); context.fill();
+    context.fillStyle = '#092426';
+    context.beginPath(); context.arc(targetScreenX, targetScreenY, fullMap ? 3 : 2, 0, Math.PI * 2); context.fill();
+    context.restore();
+  }
+
+  #handleMapClick(event) {
+    if (!this.mapOpen || !this.waypointHandler) return;
+    const rect = this.bigMap.getBoundingClientRect();
+    const aspect = this.bigMap.width / this.bigMap.height;
+    const visibleWidth = Math.min(rect.width, rect.height * aspect);
+    const visibleHeight = visibleWidth / aspect;
+    const left = rect.left + (rect.width - visibleWidth) * .5;
+    const top = rect.top + (rect.height - visibleHeight) * .5;
+    if (event.clientX < left || event.clientX > left + visibleWidth || event.clientY < top || event.clientY > top + visibleHeight) return;
+    const canvasX = (event.clientX - left) * this.bigMap.width / visibleWidth;
+    const canvasY = (event.clientY - top) * this.bigMap.height / visibleHeight;
+    const pad = 56;
+    const spanX = ISLAND_BOUNDS.maxX - ISLAND_BOUNDS.minX;
+    const spanZ = ISLAND_BOUNDS.maxZ - ISLAND_BOUNDS.minZ;
+    const scale = Math.min((this.bigMap.width - pad * 2) / spanX, (this.bigMap.height - pad * 2) / spanZ);
+    const centreX = (ISLAND_BOUNDS.minX + ISLAND_BOUNDS.maxX) * .5;
+    const centreZ = (ISLAND_BOUNDS.minZ + ISLAND_BOUNDS.maxZ) * .5;
+    const x = centreX + (canvasX - this.bigMap.width * .5) / scale;
+    const z = centreZ + (canvasY - this.bigMap.height * .5) / scale;
+    this.waypointHandler({ x, z });
   }
 
   #drawIsland(context, project, full) {
@@ -204,6 +267,8 @@ export class HUD {
     context.beginPath(); context.moveTo(0, -size); context.lineTo(size * .72, size * .75); context.lineTo(0, size * .42); context.lineTo(-size * .72, size * .75); context.closePath(); context.fill(); context.stroke();
     context.restore();
   }
+
+  setWaypointHandler(handler) { this.waypointHandler = typeof handler === 'function' ? handler : null; }
 
   setPrompt(show, text = 'Enter Island Runner') {
     this.prompt.classList.toggle('visible', show);

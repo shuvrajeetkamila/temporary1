@@ -1,8 +1,8 @@
 {
   "name": "nauru-the-countryside",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "A streamed 1:1-scale open-world Nauru exploration prototype",
+  "description": "A native standalone and streamed web prototype for 1:1-scale Nauru exploration",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
