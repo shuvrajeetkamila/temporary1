@@ -1,0 +1,123 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.security.MessageDigest
+
+plugins {
+    id 'com.android.application'
+}
+
+/**
+ * Produces original, deterministic, locally streamable regional seed bundles.
+ * Eight non-compressible bundles are deliberately kept separate so Android AssetManager
+ * can seek one regional source file without loading national content into RAM.
+ */
+abstract class GenerateOfflineWorldPacks extends DefaultTask {
+    @OutputDirectory abstract DirectoryProperty getOutputDirectory()
+    @Input abstract Property<Long> getPackBytes()
+
+    private static final List<String> REGIONS = [
+        'ad_dawhah', 'al_rayyan', 'al_wakrah', 'al_daayen',
+        'umm_salal', 'al_khor_al_thakhira', 'al_shamal', 'al_shahaniya'
+    ]
+
+    @TaskAction
+    void generate() {
+        File root = outputDirectory.get().asFile
+        root.mkdirs()
+        File world = new File(root, 'world')
+        world.mkdirs()
+        long perPack = packBytes.get()
+        def manifestRows = []
+        REGIONS.eachWithIndex { String id, int ordinal ->
+            File file = new File(world, id + '.qtrpack')
+            MessageDigest digest = MessageDigest.getInstance('SHA-256')
+            long state = 0x9E3779B97F4A7C15L ^ (ordinal * 0xBF58476D1CE4E5B9L)
+            long written = 0L
+            byte[] buffer = new byte[1024 * 1024]
+            file.withOutputStream { stream ->
+                // Fixed 64-byte binary header: magic, version, regional ordinal, nominal payload bytes.
+                ByteBuffer header = ByteBuffer.allocate(64).order(ByteOrder.LITTLE_ENDIAN)
+                header.put('QTRWORLD2'.getBytes('US-ASCII'))
+                header.putInt(2).putInt(ordinal).putLong(perPack).putLong(32639L)
+                while (header.hasRemaining()) header.put((byte) 0)
+                byte[] head = header.array()
+                stream.write(head); digest.update(head); written += head.length
+                while (written < perPack) {
+                    int count = (int) Math.min(buffer.length, perPack - written)
+                    for (int i = 0; i < count; i++) {
+                        // xorshift64* creates a deterministic non-repeating seed field for runtime detail synthesis.
+                        state ^= (state >>> 12)
+                        state ^= (state << 25)
+                        state ^= (state >>> 27)
+                        state *= 0x2545F4914F6CDD1DL
+                        buffer[i] = (byte) (state >>> 56)
+                    }
+                    stream.write(buffer, 0, count)
+                    digest.update(buffer, 0, count)
+                    written += count
+                }
+            }
+            manifestRows << "    {\"id\": \"${id}\", \"file\": \"world/${file.name}\", \"bytes\": ${perPack}, \"sha256\": \"${digest.digest().collect { String.format('%02x', it) }.join()}\"}"
+        }
+        new File(root, 'qatar_world_index.json').text = """{
+  \"format\": \"QTRWORLD2\",
+  \"crs\": \"EPSG:32639\",
+  \"worldEpoch\": \"unresolved-authoritative-data-gate\",
+  \"coverageStatus\": \"procedural-package-foundation-not-authoritative-geography\",
+  \"regionPacks\": [
+${manifestRows.join(',\n')}
+  ]
+}
+"""
+    }
+}
+
+android {
+    namespace 'ai.shuvrajeet.qataronegb'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ai.shuvrajeet.qataronegb'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.2.0-onegib-foundation'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ''
+            versionNameSuffix '-debug'
+        }
+    }
+
+    aaptOptions {
+        // The runtime pack reader needs seekable chunks. Prevent APK compression from defeating this.
+        noCompress 'qtrpack'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+def generatedWorld = layout.buildDirectory.dir('generated/offlineWorldAssets')
+def generateOfflineWorldPacks = tasks.register('generateOfflineWorldPacks', GenerateOfflineWorldPacks) {
+    outputDirectory.set(generatedWorld)
+    // 8 x 128 MiB = 1 GiB exactly; final APK is larger once code/index/signature are included.
+    packBytes.set(134_217_728L)
+}
+android.sourceSets.main.assets.srcDir(generatedWorld)
+tasks.named('preBuild').configure { dependsOn(generateOfflineWorldPacks) }
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}

@@ -1,0 +1,51 @@
+name: Qatar 1 GiB offline APK
+
+on:
+  push:
+    branches: [arena/3b05e45c-temporary1]
+    paths:
+      - 'qatar-peninsula-1gb/**'
+      - '.github/workflows/qatar-onegib-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-package:
+    name: Build and validate 1 GiB offline APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: qatar-peninsula-1gb
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build tests and universal debug APK
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+      - name: Validate offline APK size and ZIP integrity
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          test -f "$apk"
+          bytes=$(stat -c%s "$apk")
+          test "$bytes" -ge 1000000000
+          unzip -t "$apk" >/dev/null
+          sha256sum "$apk" | tee artifacts/Qatar-The-Peninsula-v0.2.0-onegib-foundation-debug.apk.sha256
+          cp "$apk" artifacts/Qatar-The-Peninsula-v0.2.0-onegib-foundation-debug.apk
+          printf 'apk_bytes=%s\nminimum_bytes=1000000000\nworld_seed_bytes=1073741824\n' "$bytes" > artifacts/BUILD_SIZE_REPORT.txt
+      - name: Publish tested 1 GiB APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Qatar-The-Peninsula-v0.2.0-onegib-foundation-debug
+          path: qatar-peninsula-1gb/artifacts/
+          if-no-files-found: error
+          retention-days: 14
