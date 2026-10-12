@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { COASTLINE, ISLAND_BOUNDS } from '../src/data/nauruCoastline.js';
 import { AIRPORT, airportInfluence, coastDistance, terrainHeight, terrainRegion, toRotatedLocal } from '../src/core/terrainModel.js';
 import { distanceToPolyline, pointInPolygon, resampleClosedPolyline, seededRandom, signedDistanceToPolygon } from '../src/core/math.js';
+import { Navigation, formatNavigationDistance, headingFromVector } from '../src/world/Navigation.js';
 
 test('coastline keeps Nauru at real-world metre scale', () => {
   const xs = COASTLINE.map(([x]) => x);
@@ -51,4 +52,26 @@ test('seeded random sequence can reproduce streamed sectors', () => {
   const b = Array.from({ length: 8 }, second);
   assert.deepEqual(a, b);
   assert.ok(a.every((value) => value >= 0 && value < 1));
+});
+
+test('GPS navigation reports a compass heading, arrival, and saveable marker', () => {
+  const navigation = new Navigation({ arrivalRadius: 25 });
+  assert.equal(navigation.setWaypoint({ x: 100, z: 0, name: 'East coast' }), true);
+  const enRoute = navigation.update({ x: 0, z: 0 }, 0);
+  assert.equal(enRoute.active, true);
+  assert.equal(Math.round(enRoute.distance), 100);
+  assert.equal(enRoute.heading, 90);
+  assert.equal(enRoute.arrived, false);
+  assert.equal(formatNavigationDistance(enRoute.distance), '100 m');
+  assert.equal(headingFromVector(0, -1), 180);
+
+  const arrival = navigation.update({ x: 82, z: 0 }, 0);
+  assert.equal(arrival.arrived, true);
+  assert.equal(arrival.justArrived, true);
+  assert.equal(navigation.update({ x: 82, z: 0 }, 0).justArrived, false);
+  assert.deepEqual(navigation.serialize(), { x: 100, z: 0, name: 'East coast', detail: 'Player waypoint', landmarkId: null });
+
+  const restored = new Navigation();
+  assert.equal(restored.restore(navigation.serialize()), true);
+  assert.equal(restored.update({ x: 0, z: 0 }).waypoint.name, 'East coast');
 });
