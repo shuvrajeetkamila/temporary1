@@ -36,12 +36,13 @@ jobs:
           gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug 2>&1 | tee artifacts/gradle.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            grep -E -i '^(FAILURE:|\* What went wrong:|\* Exception is:|.*(error:|Caused by:|Execution failed|cannot find|not found|unsupported).*)' artifacts/gradle.log > artifacts/gradle-root-cause.log || true
             tail -n 100 artifacts/gradle.log > artifacts/gradle-failure-tail.log
-            echo "::group::Gradle failure tail"
-            cat artifacts/gradle-failure-tail.log
+            echo "::group::Gradle root cause"
+            cat artifacts/gradle-root-cause.log artifacts/gradle-failure-tail.log
             echo "::endgroup::"
-            detail=$(tr '\n' ' ' < artifacts/gradle-failure-tail.log | cut -c1-6000)
-            echo "::error file=qatar-android/artifacts/gradle.log,title=Gradle APK build failure::$detail"
+            detail=$(tr '\n' ' ' < artifacts/gradle-root-cause.log | cut -c1-6000)
+            echo "::error file=qatar-android/artifacts/gradle.log,title=Gradle APK build root cause::$detail"
             exit "$status"
           fi
       - name: Validate packaged world gate
