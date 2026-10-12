@@ -37,11 +37,13 @@ jobs:
           apk=app/build/outputs/apk/debug/app-debug.apk
           test -f "$apk"
           bytes=$(stat -c%s "$apk")
-          test "$bytes" -ge 1000000000
+          test "$bytes" -ge 1073741824
           unzip -t "$apk" >/dev/null
-          sha256sum "$apk" | tee artifacts/Qatar-The-Peninsula-v0.2.0-onegib-foundation-debug.apk.sha256
+          sha256=$(sha256sum "$apk" | awk '{print $1}')
+          printf '%s  %s\n' "$sha256" 'Qatar-The-Peninsula-v0.2.0-onegib-foundation-debug.apk' | tee artifacts/Qatar-The-Peninsula-v0.2.0-onegib-foundation-debug.apk.sha256
           cp "$apk" artifacts/Qatar-The-Peninsula-v0.2.0-onegib-foundation-debug.apk
-          printf 'apk_bytes=%s\nminimum_bytes=1000000000\nworld_seed_bytes=1073741824\n' "$bytes" > artifacts/BUILD_SIZE_REPORT.txt
+          printf 'apk_bytes=%s\nminimum_bytes=1073741824\nworld_seed_bytes=1073741824\nsha256=%s\n' "$bytes" "$sha256" > artifacts/BUILD_SIZE_REPORT.txt
+          echo "::notice title=Verified 1 GiB APK::bytes=$bytes sha256=$sha256"
       - name: Publish tested 1 GiB APK
         uses: actions/upload-artifact@v4
         with:
