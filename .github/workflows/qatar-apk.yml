@@ -29,7 +29,10 @@ jobs:
       - name: Reset current QA state
         run: rm -rf artifacts && mkdir -p artifacts
       - name: Unit tests and debug APK
-        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug 2>&1 | tee artifacts/gradle.log
       - name: Validate packaged world gate
         run: |
           test "$(sed -n '1p' app/src/main/assets/world/qatar_world_manifest.txt)" = "QTRWORLD"
@@ -41,7 +44,8 @@ jobs:
           sha256sum artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk > artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk.sha256
           unzip -t artifacts/Qatar-The-Peninsula-v0.1.0-toolchain-debug.apk
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: Qatar-The-Peninsula-v0.1.0-toolchain-debug
+          name: Qatar-The-Peninsula-build-diagnostics
           path: qatar-android/artifacts/
           if-no-files-found: error
