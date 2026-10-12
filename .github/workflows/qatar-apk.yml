@@ -33,6 +33,16 @@ jobs:
         run: |
           set -o pipefail
           gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug 2>&1 | tee artifacts/gradle.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            tail -n 100 artifacts/gradle.log > artifacts/gradle-failure-tail.log
+            echo "::group::Gradle failure tail"
+            cat artifacts/gradle-failure-tail.log
+            echo "::endgroup::"
+            detail=$(tr '\n' ' ' < artifacts/gradle-failure-tail.log | cut -c1-6000)
+            echo "::error file=qatar-android/artifacts/gradle.log,title=Gradle APK build failure::$detail"
+            exit "$status"
+          fi
       - name: Validate packaged world gate
         run: |
           test "$(sed -n '1p' app/src/main/assets/world/qatar_world_manifest.txt)" = "QTRWORLD"
