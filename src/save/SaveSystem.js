@@ -1,4 +1,5 @@
 const SAVE_KEY = 'nauru.save.v1';
+const SAVE_VERSION = 2;
 
 export class SaveSystem {
   constructor() {
@@ -10,11 +11,11 @@ export class SaveSystem {
 
   save({ player, vehicle, world, hud, inVehicle }) {
     const payload = {
-      version: 1,
+      version: SAVE_VERSION,
       savedAt: new Date().toISOString(),
       player: player.serialize(),
       vehicle: vehicle.serialize(),
-      world: { timeHours: world.atmosphere.timeHours, weather: world.atmosphere.weather.id },
+      world: { timeHours: world.atmosphere.timeHours, weather: world.atmosphere.weather.id, navigation: world.navigation.serialize() },
       hud: hud.serialize(),
       inVehicle: Boolean(inVehicle),
     };
@@ -26,7 +27,7 @@ export class SaveSystem {
   load() {
     try {
       const payload = JSON.parse(localStorage.getItem(SAVE_KEY));
-      return payload?.version === 1 ? payload : null;
+      return payload?.version >= 1 && payload.version <= SAVE_VERSION ? payload : null;
     } catch {
       return null;
     }
@@ -38,6 +39,7 @@ export class SaveSystem {
     vehicle.restore(payload.vehicle);
     if (Number.isFinite(payload.world?.timeHours)) world.atmosphere.timeHours = payload.world.timeHours;
     if (payload.world?.weather) world.atmosphere.setWeather(payload.world.weather);
+    world.navigation.restore(payload.world?.navigation);
     hud.restore(payload.hud);
     return Boolean(payload.inVehicle);
   }

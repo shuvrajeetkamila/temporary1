@@ -27,6 +27,13 @@
         </section>
       </header>
 
+      <aside id="navigation-card" class="glass" aria-live="polite">
+        <span class="eyebrow">GPS WAYPOINT</span>
+        <strong id="navigation-name">CUSTOM WAYPOINT</strong>
+        <div class="navigation-readout"><i id="navigation-arrow" aria-hidden="true">▲</i><span><b id="navigation-distance">—</b><small id="navigation-bearing">000°</small></span></div>
+        <small>PRESS <kbd>M</kbd> · CLICK MAP TO SET · <kbd>X</kbd> CLEAR</small>
+      </aside>
+
       <aside id="mission-card" class="glass hidden-until-start">
         <span class="eyebrow">FREE ROAM</span>
         <strong id="objective-title">Explore the island</strong>
@@ -53,7 +60,7 @@
           <span><kbd>WASD</kbd> MOVE</span>
           <span><kbd>SHIFT</kbd> SPRINT</span>
           <span><kbd>E</kbd> USE</span>
-          <span><kbd>M</kbd> MAP</span>
+          <span><kbd>M</kbd> MAP / GPS</span>
           <span><kbd>V</kbd> CAMERA</span>
           <span><kbd>ESC</kbd> MENU</span>
         </div>
@@ -72,7 +79,7 @@
             <div class="map-stats"><span>APPROX. 1:1</span><b>1 UNIT = 1 METRE</b></div>
           </header>
           <div class="big-map-wrap"><canvas id="big-map" width="1100" height="760"></canvas></div>
-          <footer><span><i class="legend player"></i> YOU</span><span><i class="legend vehicle"></i> VEHICLE</span><span><i class="legend road"></i> ROAD</span><span><i class="legend landmark"></i> LANDMARK</span><em>Press M to close</em></footer>
+          <footer><span><i class="legend player"></i> YOU</span><span><i class="legend vehicle"></i> VEHICLE</span><span><i class="legend road"></i> ROAD</span><span><i class="legend landmark"></i> LANDMARK</span><em>Click the map to set a waypoint · M to close</em></footer>
         </div>
       </section>
 
