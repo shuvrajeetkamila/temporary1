@@ -34,7 +34,7 @@ public final class QatarRenderer implements GLSurfaceView.Renderer {
     public void setTouch(float x, float y, boolean active) { touchX = x; touchY = y; touching = active; }
     public void cycleVehicle() { mode = (mode + 1) % 5; speed = 0f; }
 
-    @Override public void onSurfaceCreated(javax.microedition.khronos.egl.EGLConfig config) {
+    @Override public void onSurfaceCreated(javax.microedition.khronos.opengles.GL10 gl, javax.microedition.khronos.egl.EGLConfig config) {
         GLES30.glEnable(GLES30.GL_DEPTH_TEST);
         GLES30.glEnable(GLES30.GL_CULL_FACE);
         GLES30.glClearColor(0.33f, 0.58f, 0.72f, 1f);
@@ -54,7 +54,7 @@ public final class QatarRenderer implements GLSurfaceView.Renderer {
         previousNanos = System.nanoTime();
     }
 
-    @Override public void onSurfaceChanged(javax.microedition.khronos.egl.EGLConfig config, int width, int height) {
+    @Override public void onSurfaceChanged(javax.microedition.khronos.opengles.GL10 gl, int width, int height) {
         GLES30.glViewport(0, 0, width, height);
         Matrix.perspectiveM(projection, 0, 62f, width / (float) Math.max(1, height), 0.15f, 600f);
     }
