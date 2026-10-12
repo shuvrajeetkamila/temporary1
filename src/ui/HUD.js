@@ -1,6 +1,8 @@
 import { COASTLINE, ISLAND_BOUNDS } from '../data/nauruCoastline.js';
 import { LANDMARKS } from '../data/landmarks.js';
+import { DISTRICT_POLYGONS } from '../data/nauruDistricts.js';
 import { clamp } from '../core/math.js';
+import { AIRPORT } from '../core/terrainModel.js';
 
 const byId = (id) => document.getElementById(id);
 
@@ -141,6 +143,7 @@ export class HUD {
     const centreZ = (ISLAND_BOUNDS.minZ + ISLAND_BOUNDS.maxZ) * .5;
     const project = ([x, z]) => [width * .5 + (x - centreX) * scale, height * .5 + (z - centreZ) * scale];
     this.#drawIsland(context, project, true);
+    this.#drawDistricts(context, project);
     this.#drawRoads(context, project, 3.2);
 
     for (const landmark of LANDMARKS) {
@@ -184,6 +187,28 @@ export class HUD {
     context.fill(); context.stroke();
   }
 
+  #drawDistricts(context, project) {
+    context.save();
+    context.strokeStyle = 'rgba(116, 179, 164, .28)';
+    context.lineWidth = 1;
+    context.setLineDash([4, 5]);
+    for (const district of DISTRICT_POLYGONS) {
+      context.beginPath();
+      district.points.forEach((point, index) => {
+        const [x, y] = project(point);
+        if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      });
+      context.closePath();
+      context.stroke();
+      const [labelX, labelY] = project(district.label);
+      context.fillStyle = 'rgba(191, 220, 211, .48)';
+      context.font = '700 8px ui-sans-serif, system-ui, sans-serif';
+      context.textAlign = 'center';
+      context.fillText(district.name.toUpperCase(), labelX, labelY);
+    }
+    context.restore();
+  }
+
   #drawRoads(context, project, width) {
     context.strokeStyle = 'rgba(214,222,210,.7)';
     context.lineWidth = width;
@@ -196,6 +221,15 @@ export class HUD {
     };
     drawPath(this.world.roads.ringPath, true);
     for (const path of this.world.roads.sidePaths) drawPath(path, false);
+    const c = Math.cos(AIRPORT.angle);
+    const s = Math.sin(AIRPORT.angle);
+    const start = [AIRPORT.x - c * AIRPORT.length * .5, AIRPORT.z - s * AIRPORT.length * .5];
+    const end = [AIRPORT.x + c * AIRPORT.length * .5, AIRPORT.z + s * AIRPORT.length * .5];
+    const [startX, startY] = project(start);
+    const [endX, endY] = project(end);
+    context.strokeStyle = 'rgba(232, 235, 224, .82)';
+    context.lineWidth = width * 2.4;
+    context.beginPath(); context.moveTo(startX, startY); context.lineTo(endX, endY); context.stroke();
   }
 
   #drawMarker(context, x, y, yaw, fill, stroke, size) {

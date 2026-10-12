@@ -3,7 +3,7 @@ import { clamp, fbm2D, lerp, signedDistanceToPolygon, smoothstep, valueNoise2D }
 
 export const SEA_LEVEL = 0;
 export const LAGOON_LEVEL = 13.8;
-export const AIRPORT = Object.freeze({ x: -450, z: 1870, angle: 0.18, length: 2250, runwayWidth: 46, apronWidth: 230, elevation: 4.2 });
+export const AIRPORT = Object.freeze({ x: -1000, z: 1950, angle: 0.18, length: 2250, runwayWidth: 46, apronWidth: 230, elevation: 4.2 });
 export const LAGOON = Object.freeze({ x: -650, z: 420, radiusX: 250, radiusZ: 135, angle: -0.18 });
 
 export function toRotatedLocal(x, z, originX, originZ, angle) {
@@ -86,6 +86,17 @@ export function terrainRegion(x, z) {
   if (coast < 470) return 'coastal';
   if (coast > 720) return 'mining';
   return 'upland';
+}
+
+export function terrainRockMix(x, z) {
+  const region = terrainRegion(x, z);
+  if (region === 'beach') return .82;
+  if (region === 'mining') return clamp(.68 + Math.abs(valueNoise2D(x, z, 95, 2081)) * .28, 0, 1);
+  if (region === 'upland') return .24 + smoothstep(520, 820, coastDistance(x, z)) * .24;
+  if (region === 'airport') return .3;
+  if (region === 'lagoon') return .42;
+  if (region === 'ocean') return 1;
+  return clamp(.08 + Math.abs(valueNoise2D(x, z, 150, 507)) * .17, 0, .32);
 }
 
 export function terrainColor(x, z, target = { r: 0, g: 0, b: 0 }) {

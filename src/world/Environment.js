@@ -2,22 +2,73 @@ import * as THREE from 'three';
 import { COASTLINE, ISLAND_BOUNDS } from '../data/nauruCoastline.js';
 import { AIRPORT, airportInfluence, coastDistance, lagoonEllipticDistance, terrainHeight, terrainRegion } from '../core/terrainModel.js';
 import { hash2D, seededRandom } from '../core/math.js';
+import { createConcreteMaterial } from './MaterialLibrary.js';
 
 const SECTOR_SIZE = 600;
 
+function createPalmCrownGeometry(frondCount = 9, segments = 6) {
+  const positions = [];
+  const indices = [];
+  for (let frond = 0; frond < frondCount; frond += 1) {
+    const angle = (frond / frondCount) * Math.PI * 2 + Math.sin(frond * 17.1) * .08;
+    const directionX = Math.sin(angle);
+    const directionZ = Math.cos(angle);
+    const sideX = Math.cos(angle);
+    const sideZ = -Math.sin(angle);
+    const start = positions.length / 3;
+    for (let segment = 0; segment <= segments; segment += 1) {
+      const t = segment / segments;
+      const distance = .18 + t * 3.45;
+      const width = Math.sin(t * Math.PI) * .46 + .035;
+      const y = .42 - Math.pow(t, 1.45) * 1.25 + Math.sin(t * Math.PI) * .28;
+      const centerX = directionX * distance;
+      const centerZ = directionZ * distance;
+      positions.push(centerX - sideX * width, y, centerZ - sideZ * width);
+      positions.push(centerX + sideX * width, y, centerZ + sideZ * width);
+    }
+    for (let segment = 0; segment < segments; segment += 1) {
+      const a = start + segment * 2;
+      indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createGableRoofGeometry() {
+  const positions = [
+    -.5, -.5, -.5,  .5, -.5, -.5,  -.5, -.5, .5,  .5, -.5, .5,
+    0, .5, -.5,  0, .5, .5,
+  ];
+  const indices = [0,1,4, 2,5,3, 0,4,2, 2,4,5, 1,3,4, 3,5,4, 0,2,1, 1,2,3];
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+const palmCrownGeometry = createPalmCrownGeometry();
+const gableRoofGeometry = createGableRoofGeometry();
+
 const materials = {
   palmTrunk: new THREE.MeshStandardMaterial({ color: 0x765334, roughness: 1 }),
-  palmLeaf: new THREE.MeshStandardMaterial({ color: 0x2b6437, roughness: 0.95 }),
+  palmLeaf: new THREE.MeshStandardMaterial({ color: 0x2f713b, roughness: 0.88, emissive: 0x081b0b, emissiveIntensity: .28, side: THREE.DoubleSide }),
   treeTrunk: new THREE.MeshStandardMaterial({ color: 0x5d432c, roughness: 1 }),
-  treeLeaf: new THREE.MeshStandardMaterial({ color: 0x315f31, roughness: 1 }),
-  bush: new THREE.MeshStandardMaterial({ color: 0x416f35, roughness: 1 }),
+  treeLeaf: new THREE.MeshStandardMaterial({ color: 0x3b7040, roughness: 1, emissive: 0x0a180b, emissiveIntensity: .3 }),
+  bush: new THREE.MeshStandardMaterial({ color: 0x527947, roughness: 1, emissive: 0x081208, emissiveIntensity: .22 }),
   pinnacle: new THREE.MeshStandardMaterial({ color: 0x948a70, roughness: 1, flatShading: true }),
   roof: new THREE.MeshStandardMaterial({ color: 0x70483d, roughness: 0.88, metalness: 0.08 }),
-  concrete: new THREE.MeshStandardMaterial({ color: 0xb6af9d, roughness: 0.94 }),
+  concrete: createConcreteMaterial(0xc8bea7),
   darkConcrete: new THREE.MeshStandardMaterial({ color: 0x706f65, roughness: 0.95 }),
   metal: new THREE.MeshStandardMaterial({ color: 0x536262, roughness: 0.62, metalness: 0.55 }),
   rust: new THREE.MeshStandardMaterial({ color: 0x7d4329, roughness: 0.86, metalness: 0.32 }),
   glass: new THREE.MeshStandardMaterial({ color: 0x82bdc3, roughness: 0.18, metalness: 0.12, transparent: true, opacity: 0.78 }),
+  window: new THREE.MeshStandardMaterial({ color: 0x29484e, roughness: .2, metalness: .28, emissive: 0x102427, emissiveIntensity: .22 }),
+  door: new THREE.MeshStandardMaterial({ color: 0x5c4938, roughness: .82 }),
   lamp: new THREE.MeshStandardMaterial({ color: 0xd9fff0, roughness: 0.3, emissive: 0x9ddfc7, emissiveIntensity: 0 }),
 };
 
@@ -108,11 +159,11 @@ export class Environment {
       const yaw = random() * Math.PI * 2;
       const y = terrainHeight(x, z);
       palms.push({ matrix: matrixAt(x, y + height * 0.5, z, yaw, 0.8 + random() * 0.5, height, 0.8 + random() * 0.5) });
-      palmCrowns.push({ matrix: matrixAt(x, y + height + 1.4, z, yaw, 1.3 + random() * 0.5, 1.1 + random() * 0.4, 1.3 + random() * 0.5) });
+      palmCrowns.push({ matrix: matrixAt(x, y + height + 1.0, z, yaw, .8 + random() * .26, .8 + random() * .2, .8 + random() * .26) });
     }
     if (palms.length) {
       group.add(makeInstances(new THREE.CylinderGeometry(0.24, 0.42, 1, 7), materials.palmTrunk, palms, cast, 'Coconut palm trunks'));
-      group.add(makeInstances(new THREE.ConeGeometry(2.7, 3.8, 7), materials.palmLeaf, palmCrowns, cast, 'Coconut palm crowns'));
+      group.add(makeInstances(palmCrownGeometry, materials.palmLeaf, palmCrowns, cast, 'Coconut palm fronds'));
     }
 
     const treeTrunks = [];
@@ -122,7 +173,7 @@ export class Environment {
     for (let i = 0; i < treeAttempts; i += 1) {
       const [x, z] = randomPoint();
       const coast = coastDistance(x, z);
-      if (coast < 170 || coast > 1250 || this.roads.distanceToRoad(x, z) < 10 || lagoonEllipticDistance(x, z) < 1.18) continue;
+      if (coast < 170 || coast > 1250 || this.roads.distanceToRoad(x, z) < 10 || lagoonEllipticDistance(x, z) < 1.18 || airportInfluence(x, z) > .18) continue;
       if (terrainRegion(x, z) === 'mining' && random() < 0.58) continue;
       const h = 3.5 + random() * 5;
       const y = terrainHeight(x, z);
@@ -138,28 +189,36 @@ export class Environment {
 
     const walls = [];
     const roofs = [];
-    const buildingAttempts = Math.round(76 * this.quality.buildings);
+    const windows = [];
+    const doors = [];
+    const buildingAttempts = Math.round(92 * this.quality.buildings);
     for (let i = 0; i < buildingAttempts; i += 1) {
       const [x, z] = randomPoint();
       const coast = coastDistance(x, z);
       const roadDistance = this.roads.distanceToRoad(x, z);
-      if (coast < 115 || coast > 590 || roadDistance < 17 || roadDistance > 82 || airportInfluence(x, z) > .28) continue;
+      if (coast < 80 || coast > 620 || roadDistance < 15 || roadDistance > 88 || airportInfluence(x, z) > .28) continue;
       const width = 7 + random() * 12;
-      const depth = 7 + random() * 10;
-      const height = 3 + random() * 3.5;
-      const yaw = random() * Math.PI * 2;
+      const depth = 7 + random() * 9;
+      const height = 3.1 + random() * 2.7;
+      const yaw = Math.atan2(x, z) + (random() - .5) * .24;
       const y = terrainHeight(x, z);
+      const frontX = Math.sin(yaw);
+      const frontZ = Math.cos(yaw);
       walls.push({ matrix: matrixAt(x, y + height * 0.5, z, yaw, width, height, depth) });
-      roofs.push({ matrix: matrixAt(x, y + height + .35, z, yaw, width + 1.1, .7, depth + 1.1) });
-      if (walls.length >= Math.round(9 * this.quality.buildings)) break;
+      roofs.push({ matrix: matrixAt(x, y + height + .65, z, yaw, width + 1.2, 1.4, depth + 1.2) });
+      windows.push({ matrix: matrixAt(x + frontX * (depth * .5 + .07), y + height * .62, z + frontZ * (depth * .5 + .07), yaw, width * .52, Math.min(1.25, height * .28), .12) });
+      doors.push({ matrix: matrixAt(x + frontX * (depth * .5 + .13) - Math.cos(yaw) * width * .28, y + 1.05, z + frontZ * (depth * .5 + .13) + Math.sin(yaw) * width * .28, yaw, .95, 2.1, .14) });
+      if (walls.length >= Math.round(12 * this.quality.buildings)) break;
     }
     if (walls.length) {
-      const wallMesh = makeInstances(new THREE.BoxGeometry(1, 1, 1), materials.concrete, walls, cast, 'Modular coastal buildings');
-      const colors = [0xd1c5a7, 0xc7d1c1, 0xc5bba6, 0xbac9c9, 0xd0b89e];
+      const wallMesh = makeInstances(new THREE.BoxGeometry(1, 1, 1), materials.concrete, walls, cast, 'Weathered coastal houses');
+      const colors = [0xe1d1ae, 0xc9d3bf, 0xd3c7af, 0xbfd0cf, 0xd6baa1];
       walls.forEach((_, i) => wallMesh.setColorAt(i, new THREE.Color(colors[Math.floor(random() * colors.length)])));
       if (wallMesh.instanceColor) wallMesh.instanceColor.needsUpdate = true;
       group.add(wallMesh);
-      group.add(makeInstances(new THREE.BoxGeometry(1, 1, 1), materials.roof, roofs, cast, 'Building roofs'));
+      group.add(makeInstances(gableRoofGeometry, materials.roof, roofs, cast, 'Corrugated gable roofs'));
+      group.add(makeInstances(new THREE.BoxGeometry(1, 1, 1), materials.window, windows, false, 'House windows'));
+      group.add(makeInstances(new THREE.BoxGeometry(1, 1, 1), materials.door, doors, false, 'House doors'));
     }
 
     const pinnacles = [];
@@ -181,6 +240,8 @@ export class Environment {
     group.name = 'Ring road utilities';
     const poles = [];
     const crossbars = [];
+    const wireLeft = [];
+    const wireRight = [];
     for (let i = 0; i < this.roads.ringPath.length; i += 7) {
       const point = this.roads.ringPath[i];
       const next = this.roads.ringPath[(i + 1) % this.roads.ringPath.length];
@@ -193,9 +254,19 @@ export class Environment {
       const yaw = Math.atan2(tx, tz);
       poles.push({ matrix: matrixAt(x, y + 4.3, z, yaw, 1, 8.6, 1) });
       crossbars.push({ matrix: matrixAt(x, y + 8.2, z, yaw, 4.5, .25, .25) });
+      const sideX = Math.cos(yaw) * 1.65;
+      const sideZ = -Math.sin(yaw) * 1.65;
+      wireLeft.push(new THREE.Vector3(x - sideX, y + 8.28, z - sideZ));
+      wireRight.push(new THREE.Vector3(x + sideX, y + 8.28, z + sideZ));
     }
     group.add(makeInstances(new THREE.CylinderGeometry(.11, .16, 1, 6), materials.treeTrunk, poles, this.quality.shadows, 'Utility poles'));
     group.add(makeInstances(new THREE.BoxGeometry(1, 1, 1), materials.darkConcrete, crossbars, false, 'Utility crossbars'));
+    const wireMaterial = new THREE.LineBasicMaterial({ color: 0x222827, transparent: true, opacity: .82 });
+    const leftWire = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(wireLeft), wireMaterial);
+    const rightWire = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(wireRight), wireMaterial);
+    leftWire.name = 'Power distribution wire';
+    rightWire.name = 'Power distribution wire';
+    group.add(leftWire, rightWire);
     return group;
   }
 
@@ -216,11 +287,11 @@ export class Environment {
     const [hangarX, hangarZ] = runwayWorld(-600, -175);
     addBox(group, 'Airport utility hangar', [hangarX, terrainHeight(hangarX, hangarZ) + 8, hangarZ], [70, 16, 42], materials.metal, -AIRPORT.angle, shadow);
 
-    // Civic precinct.
-    const civicY = terrainHeight(390, 1490);
-    addBox(group, 'Civic centre main hall', [390, civicY + 7, 1490], [74, 14, 46], materials.concrete, .08, shadow);
-    addBox(group, 'Civic centre roof', [390, civicY + 14.8, 1490], [82, 1.4, 53], materials.roof, .08, shadow);
-    addBox(group, 'Civic arcade', [390, civicY + 3.6, 1465], [60, 7, 4], materials.glass, .08, false);
+    // Civic precinct, placed in Yaren beside the airport district.
+    const civicY = terrainHeight(-1450, 2250);
+    addBox(group, 'Civic centre main hall', [-1450, civicY + 7, 2250], [74, 14, 46], materials.concrete, .08, shadow);
+    addBox(group, 'Civic centre roof', [-1450, civicY + 14.8, 2250], [82, 1.4, 53], materials.roof, .08, shadow);
+    addBox(group, 'Civic arcade', [-1452, civicY + 3.6, 2225], [60, 7, 4], materials.glass, .08, false);
 
     // Aiwo harbour and original cantilever-inspired loading remnant.
     const harbourY = Math.max(1.2, terrainHeight(-2500, 380));

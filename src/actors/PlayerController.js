@@ -18,6 +18,13 @@ function createPlayerModel() {
   const shirt = new THREE.MeshStandardMaterial({ color: 0x18a99e, roughness: .9 });
   const shorts = new THREE.MeshStandardMaterial({ color: 0x273f48, roughness: .92 });
   const shoe = new THREE.MeshStandardMaterial({ color: 0x172024, roughness: .96 });
+  const contactShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(.42, 18),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false }),
+  );
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = .02;
+  root.add(contactShadow);
 
   const torso = shadow(new THREE.Mesh(new THREE.CapsuleGeometry(.32, .58, 5, 8), shirt));
   torso.position.y = 1.34;
@@ -45,7 +52,7 @@ export class PlayerController {
   constructor(scene, world) {
     this.world = world;
     this.object = createPlayerModel();
-    this.object.position.set(-638, world.heightAt(-638, 1760), 1760);
+    this.object.position.set(-1204, world.heightAt(-1204, 1831), 1831);
     this.object.rotation.y = 1.4;
     scene.add(this.object);
     this.velocity = new THREE.Vector3();
@@ -168,7 +175,7 @@ export class PlayerController {
     this.velocity.set(0, 0, 0);
   }
 
-  resetToAirport() { this.placeAt(-638, 1760, 1.4); }
+  resetToAirport() { this.placeAt(-1204, 1831, 1.4); }
 
   serialize() {
     return { x: this.object.position.x, y: this.object.position.y, z: this.object.position.z, yaw: this.facing, distance: this.distanceTravelled };

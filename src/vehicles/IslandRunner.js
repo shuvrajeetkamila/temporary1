@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { clamp, damp, dampAngle } from '../core/math.js';
 
 function standard(color, roughness = .7, metalness = .08) {
@@ -19,6 +20,15 @@ function createIslandRunner() {
   root.name = 'Island Runner — original compact utility car';
   const visual = new THREE.Group();
   root.add(visual);
+  const contactShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 24),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .2, depthWrite: false }),
+  );
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = .035;
+  contactShadow.scale.set(1.15, 2.25, 1);
+  contactShadow.renderOrder = 2;
+  root.add(contactShadow);
   const paint = standard(0xe2a742, .38, .28);
   const darkPaint = standard(0x263637, .52, .22);
   const glass = new THREE.MeshStandardMaterial({ color: 0x78aeb7, roughness: .12, metalness: .18, transparent: true, opacity: .72 });
@@ -27,9 +37,9 @@ function createIslandRunner() {
   const light = new THREE.MeshStandardMaterial({ color: 0xffe8ba, emissive: 0xffd487, emissiveIntensity: 1.4, roughness: .25 });
   const tail = new THREE.MeshStandardMaterial({ color: 0xa6241c, emissive: 0x5f0804, emissiveIntensity: .8, roughness: .3 });
 
-  addMesh(visual, new THREE.BoxGeometry(1.86, .5, 4.05), paint, [0, .72, 0], 'Lower body');
-  addMesh(visual, new THREE.BoxGeometry(1.72, .32, 2.7), paint, [0, 1.02, -.25], 'Shoulder line');
-  const cabin = addMesh(visual, new THREE.BoxGeometry(1.58, .72, 1.82), glass, [0, 1.43, -.32], 'Cabin glazing');
+  addMesh(visual, new RoundedBoxGeometry(1.86, .5, 4.05, 4, .12), paint, [0, .72, 0], 'Lower body');
+  addMesh(visual, new RoundedBoxGeometry(1.72, .32, 2.7, 3, .1), paint, [0, 1.02, -.25], 'Shoulder line');
+  const cabin = addMesh(visual, new RoundedBoxGeometry(1.58, .72, 1.82, 4, .1), glass, [0, 1.43, -.32], 'Cabin glazing');
   cabin.geometry.translate(0, 0, 0);
   addMesh(visual, new THREE.BoxGeometry(1.66, .12, 2.02), darkPaint, [0, 1.82, -.35], 'Floating roof');
   addMesh(visual, new THREE.BoxGeometry(1.45, .1, .5), darkPaint, [0, .55, 2.05], 'Front bumper');
@@ -39,6 +49,12 @@ function createIslandRunner() {
   addMesh(visual, new THREE.BoxGeometry(.3, .2, .08), tail, [-.59, .85, -2.045], 'Left tail lamp', false);
   addMesh(visual, new THREE.BoxGeometry(.3, .2, .08), tail, [.59, .85, -2.045], 'Right tail lamp', false);
   addMesh(visual, new THREE.BoxGeometry(.55, .16, .05), darkPaint, [0, .77, 2.08], 'Original grille');
+  addMesh(visual, new THREE.BoxGeometry(.44, .16, .025), standard(0xe8e2d0, .6, .05), [0, .58, -2.14], 'Rear registration plate', false);
+  addMesh(visual, new RoundedBoxGeometry(.2, .12, .32, 2, .04), darkPaint, [-.94, 1.45, .2], 'Left mirror');
+  addMesh(visual, new RoundedBoxGeometry(.2, .12, .32, 2, .04), darkPaint, [.94, 1.45, .2], 'Right mirror');
+  for (const side of [-1, 1]) {
+    addMesh(visual, new THREE.BoxGeometry(.025, .055, .32), rim, [side * .87, 1.16, -.4], `Door handle ${side}`, false);
+  }
 
   const wheels = [];
   const wheelPositions = [[-.96, .47, 1.32], [.96, .47, 1.32], [-.96, .47, -1.32], [.96, .47, -1.32]];
@@ -192,7 +208,7 @@ export class IslandRunner {
   }
 
   reset() {
-    this.position.set(-632, this.world.heightAt(-632, 1764) + .03, 1764);
+    this.position.set(-1198, this.world.heightAt(-1198, 1835) + .03, 1835);
     this.yaw = 1.4;
     this.speed = 0;
     this.steering = 0;

@@ -5,8 +5,9 @@ import { Roads } from './Roads.js';
 import { Environment } from './Environment.js';
 import { Atmosphere } from './Atmosphere.js';
 import { coastDistance, terrainHeight, terrainNormal, terrainRegion } from '../core/terrainModel.js';
-import { DISTRICTS, LANDMARKS } from '../data/landmarks.js';
-import { wrapAngle } from '../core/math.js';
+import { LANDMARKS } from '../data/landmarks.js';
+import { DISTRICT_POLYGONS } from '../data/nauruDistricts.js';
+import { pointInPolygon } from '../core/math.js';
 
 export class World {
   constructor(scene, quality) {
@@ -47,16 +48,15 @@ export class World {
       .sort((a, b) => a.distance - b.distance)[0];
     if (landmark) return { id: landmark.id, name: landmark.district.toUpperCase(), detail: landmark.name, landmark };
     const coast = coastDistance(x, z);
-    if (coast > 630) return { id: 'topside', name: 'TOPSIDE', detail: 'Central phosphate plateau', landmark: null };
     if (coast < -5) return { id: 'ocean', name: 'PACIFIC OCEAN', detail: 'Nauru coastal waters', landmark: null };
-    const angle = Math.atan2(z, x);
-    let district = DISTRICTS[0];
-    let best = Infinity;
-    for (const entry of DISTRICTS) {
-      const delta = Math.abs(wrapAngle(angle - entry.angle));
-      if (delta < best) { best = delta; district = entry; }
-    }
-    return { id: district.name.toLowerCase(), name: district.name.toUpperCase(), detail: coast < 520 ? 'Coastal settlement belt' : 'Island uplands', landmark: null };
+    const district = DISTRICT_POLYGONS.find((entry) => pointInPolygon(x, z, entry.points));
+    const districtName = district?.name || 'Nauru';
+    return {
+      id: districtName.toLowerCase(),
+      name: districtName.toUpperCase(),
+      detail: coast > 630 ? 'Topside phosphate plateau' : coast < 520 ? 'Coastal settlement belt' : 'Island uplands',
+      landmark: null,
+    };
   }
 
   setQuality(quality) {

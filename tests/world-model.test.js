@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { COASTLINE, ISLAND_BOUNDS } from '../src/data/nauruCoastline.js';
+import { DISTRICT_POLYGONS } from '../src/data/nauruDistricts.js';
 import { AIRPORT, airportInfluence, coastDistance, terrainHeight, terrainRegion, toRotatedLocal } from '../src/core/terrainModel.js';
 import { distanceToPolyline, pointInPolygon, resampleClosedPolyline, seededRandom, signedDistanceToPolygon } from '../src/core/math.js';
 
@@ -13,6 +14,14 @@ test('coastline keeps Nauru at real-world metre scale', () => {
   assert.ok(length > 5_900 && length < 6_300, `length was ${length}`);
   assert.equal(pointInPolygon(0, 0, COASTLINE), true);
   assert.equal(pointInPolygon(8_000, 0, COASTLINE), false);
+});
+
+test('open-data district polygons cover all 14 named districts', () => {
+  assert.equal(DISTRICT_POLYGONS.length, 14);
+  assert.equal(new Set(DISTRICT_POLYGONS.map(({ name }) => name)).size, 14);
+  assert.ok(DISTRICT_POLYGONS.every(({ points, label }) => points.length >= 4 && pointInPolygon(label[0], label[1], points)));
+  const aiwo = DISTRICT_POLYGONS.find(({ name }) => name === 'Aiwo');
+  assert.equal(pointInPolygon(-2500, 380, aiwo.points), true);
 });
 
 test('signed coast distance is positive on land and negative at sea', () => {

@@ -2,13 +2,18 @@ import * as THREE from 'three';
 import { COASTLINE } from '../data/nauruCoastline.js';
 import { AIRPORT, terrainHeight, toRotatedLocal } from '../core/terrainModel.js';
 import { closestPointOnPolyline, distanceToPolyline } from '../core/math.js';
+import { createAsphaltMaterial, createShoulderMaterial } from './MaterialLibrary.js';
 
-const asphaltMaterial = new THREE.MeshStandardMaterial({ color: 0x2f3534, roughness: 0.9, metalness: 0.02 });
-const shoulderMaterial = new THREE.MeshStandardMaterial({ color: 0x8d7959, roughness: 1 });
+const asphaltMaterial = createAsphaltMaterial();
+const shoulderMaterial = createShoulderMaterial();
 const lineMaterial = new THREE.MeshStandardMaterial({ color: 0xe7d89a, roughness: 0.75 });
 
 function smoothRingPath() {
-  const insetPoints = COASTLINE.map(([x, z]) => new THREE.Vector3(x * 0.91, 0, z * 0.91));
+  const insetPoints = COASTLINE.map(([x, z]) => {
+    const radius = Math.hypot(x, z) || 1;
+    const inset = 118;
+    return new THREE.Vector3(x * ((radius - inset) / radius), 0, z * ((radius - inset) / radius));
+  });
   const curve = new THREE.CatmullRomCurve3(insetPoints, true, 'centripetal', 0.35);
   return curve.getSpacedPoints(420).slice(0, -1).map((point) => [point.x, point.z]);
 }
@@ -23,6 +28,8 @@ function buildRibbon(points, width, elevation, material, closed = false) {
   const uvs = [];
   const indices = [];
   const count = points.length;
+  const cumulative = new Float32Array(count);
+  for (let i = 1; i < count; i += 1) cumulative[i] = cumulative[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
   for (let i = 0; i < count; i += 1) {
     const previous = points[(i - 1 + count) % count];
     const next = points[(i + 1) % count];
@@ -37,7 +44,7 @@ function buildRibbon(points, width, elevation, material, closed = false) {
       const x = points[i][0] + nx * width * 0.5 * side;
       const z = points[i][1] + nz * width * 0.5 * side;
       positions.push(x, terrainHeight(x, z) + elevation, z);
-      uvs.push(side < 0 ? 0 : 1, i / Math.max(1, count - 1));
+      uvs.push(side < 0 ? 0 : 1, cumulative[i] / 7.5);
     }
   }
   const segmentCount = closed ? count : count - 1;
@@ -120,7 +127,11 @@ export class Roads {
   }
 
   #buildRunway() {
-    const runwayMaterial = new THREE.MeshStandardMaterial({ color: 0x303534, roughness: 0.88 });
+    const runwayMaterial = createAsphaltMaterial();
+    runwayMaterial.color.set(0x777772);
+    runwayMaterial.map.repeat.set(120, 3);
+    runwayMaterial.normalMap.repeat.set(120, 3);
+    runwayMaterial.roughnessMap.repeat.set(120, 3);
     const apronMaterial = new THREE.MeshStandardMaterial({ color: 0x5e6260, roughness: 0.94 });
     const runwayGeometry = new THREE.BoxGeometry(AIRPORT.length, 0.24, AIRPORT.runwayWidth);
     const runway = new THREE.Mesh(runwayGeometry, runwayMaterial);
@@ -163,6 +174,21 @@ export class Roads {
     markers.count = instance;
     markers.name = 'Runway markings';
     this.group.add(markers);
+
+    const lightMaterial = new THREE.MeshStandardMaterial({ color: 0xc9edff, emissive: 0x8fd8ff, emissiveIntensity: 2.1, roughness: .25 });
+    const lightCount = 44;
+    const edgeLights = new THREE.InstancedMesh(new THREE.SphereGeometry(.22, 7, 5), lightMaterial, lightCount);
+    let lightIndex = 0;
+    for (let lx = -1000; lx <= 1000; lx += 100) {
+      for (const lz of [-26, 26]) {
+        const [x, z] = transformRunwayPoint(lx, lz);
+        matrix.compose(new THREE.Vector3(x, AIRPORT.elevation + .48, z), quaternion, new THREE.Vector3(1, 1, 1));
+        edgeLights.setMatrixAt(lightIndex++, matrix);
+      }
+    }
+    edgeLights.count = lightIndex;
+    edgeLights.name = 'Runway edge lights';
+    this.group.add(edgeLights);
   }
 
   distanceToRoad(x, z) {
