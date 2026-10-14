@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0c2434">
+<title>Island Realm: Mumbai–Navi Mumbai</title>
+<style>
+  :root { --panel: rgba(10,20,30,0.82); --edge: rgba(255,255,255,0.14); --ink: #eef4f8; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0c2434; font-family: system-ui, -apple-system, sans-serif; color: var(--ink); touch-action: none; user-select: none; -webkit-user-select: none; }
+  #game { position: fixed; inset: 0; display: block; }
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; backdrop-filter: blur(6px); }
+  /* top-left location */
+  #locBox { position: fixed; top: 10px; left: 10px; padding: 8px 12px; max-width: 46vw; z-index: 5; }
+  #locName { font-weight: 700; font-size: 15px; }
+  #locSub { font-size: 11px; opacity: 0.8; margin-top: 1px; }
+  /* clock/env */
+  #envBox { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); padding: 6px 14px; font-size: 12px; z-index: 5; text-align: center; white-space: nowrap; }
+  #envBox b { color: #ffd97f; }
+  /* minimap */
+  #mmWrap { position: fixed; top: 64px; right: 10px; z-index: 5; padding: 4px; }
+  #minimap { display: block; border-radius: 8px; width: 148px; height: 148px; }
+  /* speed/alt */
+  #speedBox { position: fixed; right: 10px; bottom: 118px; padding: 6px 12px; text-align: right; z-index: 5; min-width: 110px; }
+  #spdVal { font-size: 20px; font-weight: 700; }
+  #spdLbl { font-size: 10px; opacity: 0.75; }
+  /* joystick */
+  #joyBase { position: fixed; left: 18px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1.5px solid var(--edge); z-index: 6; touch-action: none; }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px; border-radius: 50%; background: rgba(255,255,255,0.22); border: 1.5px solid rgba(255,255,255,0.35); }
+  /* right buttons */
+  #btnCol { position: fixed; right: 10px; bottom: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 6; align-items: flex-end; }
+  .btnRow { display: flex; gap: 8px; }
+  .gbtn { width: 54px; height: 54px; border-radius: 14px; background: var(--panel); border: 1px solid var(--edge); color: var(--ink); font-size: 22px; display: flex; align-items: center; justify-content: center; touch-action: none; }
+  .gbtn:active { background: rgba(80,140,200,0.5); }
+  .gbtn.small { width: 44px; height: 44px; font-size: 17px; }
+  .gbtn .sub { font-size: 9px; position: absolute; bottom: 4px; opacity: 0.7; }
+  /* toasts */
+  #toasts { position: fixed; bottom: 170px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 8; pointer-events: none; width: min(90vw, 480px); }
+  .toast { background: var(--panel); border: 1px solid var(--edge); padding: 8px 16px; border-radius: 10px; font-size: 13px; text-align: center; animation: fadein .2s; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(8px); } }
+  /* modals */
+  .modal { position: fixed; inset: 0; background: rgba(5,10,18,0.72); display: none; align-items: center; justify-content: center; z-index: 20; }
+  .modal .box { width: min(92vw, 560px); max-height: 86vh; overflow: auto; padding: 18px; }
+  .modal h2 { font-size: 18px; margin-bottom: 10px; color: #ffd97f; }
+  .modal p, .modal li { font-size: 13px; line-height: 1.5; opacity: 0.92; }
+  .modal .close { float: right; background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; }
+  .kchip { display: inline-block; background: rgba(255,255,255,0.12); border-radius: 5px; padding: 1px 7px; font-size: 12px; margin: 1px; }
+  /* fullmap */
+  #fullmap { position: fixed; inset: 0; background: #0a1826; display: none; z-index: 15; flex-direction: column; }
+  #fmTop { display: flex; gap: 8px; padding: 8px; align-items: center; flex-wrap: wrap; background: rgba(8,16,26,0.9); }
+  #fmTop input { flex: 1; min-width: 140px; background: rgba(255,255,255,0.1); border: 1px solid var(--edge); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+  #fmBody { flex: 1; display: flex; min-height: 0; }
+  #fmSide { width: 250px; background: rgba(8,16,26,0.94); overflow: auto; padding: 10px; font-size: 12px; }
+  #fmSide h4 { color: #ffd97f; margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .layerRow { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
+  .regionRow { padding: 3px 6px; border-radius: 6px; cursor: pointer; }
+  .regionRow:hover { background: rgba(255,255,255,0.08); }
+  .sr { padding: 5px 6px; border-radius: 6px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .sr:hover { background: rgba(255,255,255,0.1); }
+  .sr small { opacity: 0.6; }
+  #fmMapWrap { flex: 1; position: relative; min-width: 0; }
+  #fullmapCanvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  #fmCard { position: absolute; left: 12px; bottom: 12px; width: min(320px, 80%); padding: 12px; display: none; }
+  #fmCard h3 { font-size: 15px; color: #ffd97f; }
+  #fmCard .meta { font-size: 11px; opacity: 0.75; margin: 3px 0; }
+  #fmCard .flavor { font-size: 12px; line-height: 1.45; margin: 6px 0; opacity: 0.95; }
+  .abtn { display: inline-block; background: #2e6b8a; color: #fff; border: none; border-radius: 8px; padding: 7px 12px; font-size: 12.5px; margin: 4px 4px 0 0; cursor: pointer; }
+  .abtn.warn { background: #8a502e; }
+  .abtn:active { filter: brightness(1.2); }
+  /* teleport charges */
+  #tpCharges { position: fixed; top: 64px; left: 10px; z-index: 5; font-size: 11px; padding: 5px 9px; }
+  /* start screen */
+  #start { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 30%, #16405c 0%, #0a1826 70%); z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
+  #start h1 { font-family: Georgia, serif; font-size: clamp(26px, 6vw, 44px); color: #ffd97f; text-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+  #start h3 { font-size: clamp(13px, 2.4vw, 16px); font-weight: 400; opacity: 0.85; margin: 8px 0 4px; }
+  #start .credit { font-size: 11px; opacity: 0.6; max-width: 520px; margin-top: 22px; line-height: 1.5; }
+  #startBtn { margin-top: 26px; font-size: 18px; padding: 14px 42px; border-radius: 14px; background: linear-gradient(180deg, #3a86ad, #2e6b8a); color: #fff; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; }
+  #startStats { margin-top: 14px; font-size: 12px; opacity: 0.75; }
+  #discoverBox { position: fixed; top: 64px; left: 10px; z-index: 4; font-size: 11px; padding: 4px 9px; opacity: 0.9; }
+  @media (max-width: 760px) {
+    #minimap { width: 108px; height: 108px; }
+    #fmSide { position: absolute; right: 0; top: 0; bottom: 0; z-index: 2; width: 220px; }
+    #envBox { font-size: 10px; top: 56px; }
+    #speedBox { bottom: 150px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="locBox" class="panel"><div id="locName">…</div><div id="locSub"></div></div>
+<div id="envBox" class="panel"></div>
+<div id="mmWrap" class="panel"><canvas id="minimap" width="296" height="296"></canvas></div>
+<div id="speedBox" class="panel"><div id="spdVal">0</div><div id="spdLbl">km/h</div></div>
+<div id="tpCharges" class="panel">✨ Teleports: ◆◆◆</div>
+<div id="discoverBox" class="panel">📍 0 / 780 discovered</div>
+
+<div id="joyBase"><div id="joyKnob"></div></div>
+<div id="btnCol">
+  <div class="btnRow">
+    <button class="gbtn small" id="bThrUp">▲</button>
+    <button class="gbtn small" id="bThrDn">▼</button>
+  </div>
+  <div class="btnRow">
+    <button class="gbtn" id="bEnter" title="Enter / exit (E)">🚪<span class="sub">E</span></button>
+    <button class="gbtn" id="bVeh">🚗<span class="sub">V</span></button>
+  </div>
+  <div class="btnRow">
+    <button class="gbtn" id="bMap">🗺️<span class="sub">M</span></button>
+    <button class="gbtn" id="bTp">✨<span class="sub">T</span></button>
+  </div>
+  <div class="btnRow">
+    <button class="gbtn small" id="bHelp">❓</button>
+    <button class="gbtn small" id="bSound">🔇</button>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<!-- full map -->
+<div id="fullmap">
+  <div id="fmTop">
+    <input id="fmSearch" placeholder="Search 780 locations… (Colaba, JNPT, Ransai…)">
+    <button class="abtn" id="fmClose">✕ Close</button>
+  </div>
+  <div id="fmBody">
+    <div id="fmMapWrap"><canvas id="fullmapCanvas"></canvas>
+      <div id="fmCard" class="panel"></div>
+    </div>
+    <div id="fmSide"></div>
+  </div>
+</div>
+
+<!-- vehicle menu -->
+<div class="modal" id="vehModal"><div class="box panel">
+  <button class="close" data-close="vehModal">✕</button>
+  <h2>Choose your ride</h2>
+  <p style="margin-bottom:8px">Walk, drive, sail or fly — the same continuous world.</p>
+  <div id="vehGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px"></div>
+  <p style="margin-top:10px;font-size:12px;opacity:.75">🚆 Local trains: stand on a platform when a train stops and press 🚪(E) to board; press again at the next station to alight.</p>
+</div></div>
+
+<!-- help -->
+<div class="modal" id="helpModal"><div class="box panel">
+  <button class="close" data-close="helpModal">✕</button>
+  <h2>How to play</h2>
+  <p><b>Move</b>: joystick (bottom-left) or <span class="kchip">W A S D</span><span class="kchip">arrows</span>. <b>Run</b>: <span class="kchip">Shift</span>.<br>
+  <b>Throttle</b>: <span class="kchip">W/S</span> or ▲▼ buttons. <b>Heli/plane climb</b>: <span class="kchip">R</span>/<span class="kchip">F</span> or hold ▲▼.<br>
+  <b>Enter/exit/board train</b>: <span class="kchip">E</span>. <b>Brake</b>: <span class="kchip">Space</span>.<br>
+  <b>Map</b>: <span class="kchip">M</span> · <b>Teleport</b>: <span class="kchip">T</span> · <b>Vehicles</b>: <span class="kchip">V</span> · <b>Zoom</b>: wheel / pinch.</p>
+  <h2 style="margin-top:12px">Tips</h2>
+  <p>• Roads are fast, fields are slow, water stops cars. Boats need 0.5 m of draft.<br>
+  • Planes: throttle up on a runway, pull back (R) past ~120 km/h.<br>
+  • Monsoon (Jun–Sep) brings rain, lightning and flooded shoulders. Tides move every 6h.<br>
+  • Discover all 780 locations from the prompt's dossiers — tap any dot on the map.</p>
+</div></div>
+
+<!-- about -->
+<div class="modal" id="aboutModal"><div class="box panel">
+  <button class="close" data-close="aboutModal">✕</button>
+  <h2>About this realm</h2>
+  <p>An open-world recreation of the Mumbai–Navi Mumbai island region, built from the
+  <i>Mumbai_NaviMumbai_IslandGame_Prompt</i> specification: 780 location dossiers, ten regions, tidal creeks,
+  suburban railways, the JNPT port belt, monsoon weather and semi-diurnal tides.</p>
+  <p style="margin-top:8px">Design honouring the spec: real coordinates per dossier · layered minimap & teleport system (Part A) ·
+  teleport fairness charges (Part B) · per-vehicle physics (Part C) · NPC archetypes & crowd rhythms (Part D) ·
+  seasons, monsoon, tides, wildlife (Part E) · open-data credit (Part F).</p>
+  <p style="margin-top:8px;font-size:11px;opacity:0.65">Geography stylised from OpenStreetMap insight; location text extracted verbatim from the prompt document. Made with ❤ for Mumbai.</p>
+</div></div>
+
+<!-- start -->
+<div id="start">
+  <h1>THE ISLAND REALM</h1>
+  <h3>Mumbai – Navi Mumbai · an open-world coastal megacity</h3>
+  <div id="startStats"></div>
+  <button id="startBtn">ENTER THE REALM</button>
+  <div class="credit">780 location dossiers · South Mumbai → Vasai-Virar → Thane → Bhiwandi-Kalyan → Navi Mumbai →
+  Kharghar-Panvel → Uran &amp; JNPT → Raigad shore · built from the Mumbai_NaviMumbai_IslandGame prompt ·
+  geography after OpenStreetMap contributors · offline playable</div>
+</div>
+
+<script>
+/*__GAME_SCRIPT__*/
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# spec reference copy (lives on its own branch already)
+_spec/
+# build intermediates
+android/bin/
+android/tools/*.jar
+android/tools/*.class
+python_apk/__pycache__/
+www/
+# generated poi db is committed (it's the data layer), everything else generated is ignored
