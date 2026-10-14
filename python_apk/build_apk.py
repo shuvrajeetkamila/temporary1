@@ -73,8 +73,8 @@ def build_manifest():
     label = ("ref", 0x7F020000)  # @string/app_name
     manifest = axml.Node("manifest", [
         (None, "package", package),
-        A("versionCode", ("int", 2)),
-        A("versionName", "1.2"),
+        A("versionCode", ("int", 3)),
+        A("versionName", "1.3"),
     ], [
         axml.Node("uses-sdk", [
             A("minSdkVersion", ("int", 21)),

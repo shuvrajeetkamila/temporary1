@@ -129,6 +129,59 @@
     openModal("jobsModal");
   };
 
+  // ---------- photo postcards ----------
+  UI.openPhotos = () => {
+    const ph = G.store.get("photos", []);
+    let html = `<h2>📷 Postcards from the realm</h2>
+      <button class="abtn" id="takeShot">Take a postcard here</button>
+      <p style="font-size:11px;opacity:.7">Saved on this device (up to 8).</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`;
+    html += ph.map((s, i) => `<div class="panel" style="padding:6px">
+      <img src="${s.s}" style="width:100%;border-radius:6px" alt="postcard">
+      <div style="font-size:10px;opacity:.8;margin-top:3px">${s.at} · ${new Date(s.d).toLocaleDateString()}</div>
+      <button class="abtn warn" data-del="${i}" style="font-size:10px;padding:3px 8px">delete</button></div>`).join("");
+    html += "</div>";
+    if (!ph.length) html += "<p style='opacity:.7'>No postcards yet — go watch a monsoon evening at Marine Drive.</p>";
+    $("photosGrid").innerHTML = html;
+    $("takeShot").onclick = () => {
+      const c = G.R.cvs;
+      const t = document.createElement("canvas");
+      t.width = 360; t.height = Math.round(360 * c.height / c.width);
+      const g = t.getContext("2d");
+      g.drawImage(c, 0, 0, t.width, t.height);
+      const p = G.POI.nearest(G.PL.x, G.PL.y, 1200);
+      const stamp = p ? p.name : "the open water";
+      const d = G.ENV.date();
+      const shot = { d: Date.now(), s: t.toDataURL("image/jpeg", 0.55), at: stamp };
+      const arr = G.store.get("photos", []);
+      arr.unshift(shot);
+      while (arr.length > 8) arr.pop();
+      G.store.set("photos", arr);
+      G.emit("toast", "📷 Postcard saved — " + stamp);
+      closeModals();
+    };
+    document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+      const arr = G.store.get("photos", []);
+      arr.splice(parseInt(b.dataset.del, 10), 1);
+      G.store.set("photos", arr);
+      UI.openPhotos();
+    });
+    openModal("photosModal");
+  };
+
+  // minimap tap → waypoint
+  (() => {
+    const mm = document.getElementById("minimap");
+    mm.addEventListener("pointerdown", e => {
+      const r = mm.getBoundingClientRect();
+      const view = Math.max(9000, 16000 / Math.max(0.2, G.CAM.zoom * 4));
+      const wx = G.CAM.x + ((e.clientX - r.left) / r.width - 0.5) * view;
+      const wy = G.CAM.y + ((e.clientY - r.top) / r.height - 0.5) * view;
+      const p = G.POI.nearest(wx, wy, Math.max(320, view * 0.07));
+      if (p) { G.WAYPOINT.set(p.x, p.y, p.name); G.emit("toast", "📍 Waypoint: " + p.name); }
+      else { G.WAYPOINT.set(wx, wy, ""); G.emit("toast", "📍 Waypoint set"); }
+    });
+  })();
+
   // ---------- modals ----------
   function openModal(id) { $(id).style.display = "flex"; }
   function closeModals() { document.querySelectorAll(".modal").forEach(m => m.style.display = "none"); }
@@ -229,6 +282,7 @@
   $("bMap").onclick = () => G.MAPS.fullmap.show();
   $("bTp").onclick = () => { G.MAPS.fullmap.show(); G.emit("toast", "Pick a dot, then “Teleport here”."); };
   $("bJobs").onclick = () => UI.openJobs();
+  $("bPhoto").onclick = () => UI.openPhotos();
   $("bHelp").onclick = () => openModal("helpModal");
   $("bSound").onclick = () => { UI.sound = !UI.sound; $("bSound").textContent = UI.sound ? "🔊" : "🔇"; G.emit("sound", UI.sound); };
 
@@ -267,6 +321,12 @@
   });
 
   // ---------- start ----------
+  (() => { // title-screen dossier quote
+    const q = G.POI.all[Math.floor(Math.random() * G.POI.all.length)];
+    const el = document.getElementById("splashQuote");
+    if (q && el && q.moment) el.textContent = "“A typical atmospheric moment in " + q.name + ": " + q.moment + ".”";
+  })();
+
   UI.start = () => {
     $("start").style.display = "none";
     UI.started = true;

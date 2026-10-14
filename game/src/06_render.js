@@ -139,8 +139,67 @@
       case "sealink": {
         ctx.beginPath(); ctx.moveTo(0, s * 0.8); ctx.lineTo(0, -s * 1.6); ctx.moveTo(-s * 0.8, -s * 0.6); ctx.lineTo(s * 0.8, -s * 0.6); ctx.stroke(); break;
       }
+      case "market": { // stall with striped awning
+        ctx.strokeRect(-s * 0.8, -s * 0.2, s * 1.6, s * 0.8);
+        ctx.beginPath(); ctx.moveTo(-s, -s * 0.2);
+        for (let i = 0; i < 4; i++) { ctx.lineTo(-s + s * 0.25 * (i + 0.5), -s * 0.55); ctx.lineTo(-s + s * 0.25 * (i + 1), -s * 0.2); }
+        ctx.stroke(); break;
+      }
+      case "civic": { // school / dispensary block with flag
+        ctx.strokeRect(-s * 0.8, -s * 0.4, s * 1.6, s);
+        ctx.beginPath(); ctx.moveTo(s * 0.8, -s * 0.4); ctx.lineTo(s * 0.8, -s * 1.1); ctx.lineTo(s * 1.2, -s * 0.95); ctx.lineTo(s * 0.8, -s * 0.8); ctx.stroke(); break;
+      }
+      case "station": { // platform canopy
+        ctx.beginPath(); ctx.moveTo(-s, s * 0.4); ctx.lineTo(-s, -s * 0.3); ctx.arc(0, -s * 0.3, s, Math.PI, 0); ctx.lineTo(s, s * 0.4);
+        ctx.moveTo(-s * 0.6, s * 0.4); ctx.lineTo(-s * 0.6, -s * 0.28); ctx.moveTo(s * 0.6, s * 0.4); ctx.lineTo(s * 0.6, -s * 0.28); ctx.stroke(); break;
+      }
+      case "post": { // chowky / post office
+        ctx.strokeRect(-s * 0.7, -s * 0.5, s * 1.4, s * 1.1);
+        ctx.beginPath(); ctx.arc(0, -s * 0.5, s * 0.25, 0, 7); ctx.stroke(); break;
+      }
+      case "stadium": {
+        ctx.beginPath(); ctx.ellipse(0, 0, s * 1.3, s * 0.75, 0, 0, 7); ctx.stroke(); break;
+      }
+      case "plaza": { // everyday landmark: flagpole circle
+        ctx.beginPath(); ctx.arc(0, 0, s * 0.55, 0, 7); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -s * 1.1); ctx.lineTo(s * 0.55, -s * 0.9); ctx.lineTo(0, -s * 0.7); ctx.stroke(); break;
+      }
     }
     ctx.restore();
+  }
+
+  // dossier micro-landmarks: every POI draws its own spec-described landmark
+  function poiLandmarkKind(p) {
+    const s = (p.landmark || "").toLowerCase();
+    if (!s) return null;
+    if (/church/.test(s)) return "church";
+    if (/temple|mandir|kovil|shrine/.test(s)) return "temple";
+    if (/masjid|mosque|dargah|gurudwara/.test(s)) return "dome";
+    if (/school|college|dispensary|hospital|clinic|library/.test(s)) return "civic";
+    if (/market|bazaar|mall|shopping|apmc/.test(s)) return "market";
+    if (/station|depot|terminal/.test(s)) return "station";
+    if (/police|post office/.test(s)) return "post";
+    if (/lighthouse/.test(s)) return "lighthouse";
+    if (/fort|bastion/.test(s)) return "fort";
+    if (/stepwell|well|tank/.test(s)) return "caves";
+    if (/ground|stadium|maidan/.test(s)) return "stadium";
+    if (/pagoda/.test(s)) return "pagoda";
+    if (/garden|park|beach/.test(s)) return "plaza";
+    return "plaza";
+  }
+
+  // pre-rendered city-glow sprite (perf: no per-POI gradients each frame)
+  let glowSprite = null;
+  function makeGlow() {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d");
+    const rg = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    rg.addColorStop(0, "rgba(255,215,140,0.55)");
+    rg.addColorStop(1, "rgba(255,215,140,0)");
+    g.fillStyle = rg;
+    g.fillRect(0, 0, 64, 64);
+    return c;
   }
 
   // ---------------- main draw ----------------
@@ -183,6 +242,19 @@
       ctx.lineWidth = Math.max(wpx, 1.5 / z);
       ctx.stroke(pathCache.water[i]);
     });
+    // animated tide shimmer on tidal channels
+    if (z > 0.4 && z < 8) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(230,246,255,0.14)";
+      ctx.lineWidth = Math.max(3, 26 * Math.min(1, z * 0.35));
+      ctx.setLineDash([60, 130]);
+      ctx.lineDashOffset = -(env.t * 22) % 190;
+      W.water.forEach((wl, i) => {
+        if (!wl.tidal || !inViewBB(wl.bb, 2500)) return;
+        ctx.stroke(pathCache.water[i]);
+      });
+      ctx.restore();
+    }
     // lakes
     ctx.fillStyle = mixHex(sea, "#8fd0e0", 0.25);
     W.lakes.forEach((l, i) => { if (inViewBB(l.bb, 500)) ctx.fill(pathCache.lakes[i]); });
@@ -240,6 +312,7 @@
     // buildings
     if (z > 5.5) {
       const near = G.POI.nearby(cam.x, cam.y, Math.max(900, w / z));
+      const night = day < 0.3;
       for (const poi of near) {
         for (const b of blocksFor(poi)) {
           if (Math.abs(b.x - cam.x) > w / z + 80 || Math.abs(b.y - cam.y) > h / z + 80) continue;
@@ -251,14 +324,51 @@
           ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
           ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = 0.8 / z;
           ctx.strokeRect(-b.w / 2, -b.h / 2, b.w, b.h);
+          if (night && z > 7) { // lit windows
+            ctx.fillStyle = "rgba(255,214,120,0.85)";
+            const seed = G.hash2(b.x | 0, b.y | 0);
+            const wn = 1 + Math.floor(seed * 3);
+            for (let k = 0; k < wn; k++) {
+              const wx = -b.w * 0.3 + G.hash2(b.x + k, b.y) * b.w * 0.6;
+              const wy = -b.h * 0.25 + G.hash2(b.y + k, b.x) * b.h * 0.5;
+              ctx.fillRect(wx, wy, Math.max(1, b.w * 0.08), Math.max(1, b.h * 0.08));
+            }
+          }
           ctx.restore();
         }
       }
     }
 
-    // landmark doodles
+    // railway station buildings
+    if (z > 0.7) {
+      ctx.lineWidth = 1 / z * 1.2;
+      for (const rail of W.rails) {
+        for (const st of rail.st) {
+          if (Math.abs(st.x - cam.x) > w / z + 200 || Math.abs(st.y - cam.y) > h / z + 200) continue;
+          const bw = Math.max(4, 34 * Math.min(1.6, z * 0.5)), bh2 = Math.max(2.4, 13 * Math.min(1.6, z * 0.5));
+          ctx.fillStyle = day > 0.15 ? "#e2d8c8" : "#8a8478";
+          ctx.strokeStyle = "#4a4438";
+          ctx.fillRect(st.x - bw / 2, st.y - bh2 / 2, bw, bh2);
+          ctx.strokeRect(st.x - bw / 2, st.y - bh2 / 2, bw, bh2);
+        }
+      }
+    }
+
+    // landmark doodles (named) + dossier micro-landmarks
     if (z > 0.6) for (const l of W.landmarks) {
       if (Math.abs(l.x - cam.x) < w / z + 150 && Math.abs(l.y - cam.y) < h / z + 150) drawLandmark(ctx, l, z);
+    }
+    if (z > 2) {
+      const nearPOI = G.POI.nearby(cam.x, cam.y, Math.max(700, w / z));
+      let drawn = 0;
+      for (const p of nearPOI) {
+        if (Math.abs(p.x - cam.x) > w / z || Math.abs(p.y - cam.y) > h / z) continue;
+        const kind = poiLandmarkKind(p);
+        if (kind && drawn < 40) {
+          drawLandmark(ctx, { x: p.x + 26, y: p.y - 18, a: kind }, z);
+          drawn++;
+        }
+      }
     }
 
     // trees at street zoom in forests
@@ -280,18 +390,18 @@
     // ENTITY LAYERS (traffic, npc, player drawn by their modules)
     G.emit("drawworld", { ctx, z, day, tint });
 
-    // night city glow
+    // night city glow (sprite-blit — cheap across hundreds of POIs)
     if (day < 0.45 && z < 6) {
+      if (!glowSprite) glowSprite = makeGlow();
       ctx.globalCompositeOperation = "lighter";
+      const a = Math.min(1, (0.45 - day) * 2.2);
+      ctx.globalAlpha = a;
       for (const p of G.POI.all) {
-        if (p._d > 20000 && Math.abs(p.x - cam.x) > w / z + 3000) continue;
         if (Math.abs(p.x - cam.x) > w / z + 2000 || Math.abs(p.y - cam.y) > h / z + 2000) continue;
-        const r = (60 + (p.cat === "rail" ? 60 : 20)) / Math.max(0.25, z) / 8;
-        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-        const a = (0.10 * (1 - day)) * (p.cat === "rail" ? 1.6 : 1);
-        g.addColorStop(0, `rgba(255,220,140,${a})`); g.addColorStop(1, "rgba(255,220,140,0)");
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+        const r = (80 + (p.cat === "rail" ? 100 : 30)) / Math.max(0.25, z);
+        ctx.drawImage(glowSprite, p.x - r, p.y - r, r * 2, r * 2);
       }
+      ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
     }
 

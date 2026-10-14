@@ -113,6 +113,7 @@
   </div>
   <div class="btnRow">
     <button class="gbtn small" id="bJobs">📋<span class="sub">J</span></button>
+    <button class="gbtn small" id="bPhoto">📷</button>
     <button class="gbtn small" id="bHelp">❓</button>
     <button class="gbtn small" id="bSound">🔇</button>
   </div>
@@ -133,6 +134,12 @@
     <div id="fmSide"></div>
   </div>
 </div>
+
+<!-- postcards -->
+<div class="modal" id="photosModal"><div class="box panel">
+  <button class="close" data-close="photosModal">✕</button>
+  <div id="photosGrid"></div>
+</div></div>
 
 <!-- jobs board -->
 <div class="modal" id="jobsModal"><div class="box panel">
@@ -182,6 +189,7 @@
   <h1>THE ISLAND REALM</h1>
   <h3>Mumbai – Navi Mumbai · an open-world coastal megacity</h3>
   <div id="startStats"></div>
+  <div id="splashQuote" style="margin-top:10px;font-size:12px;opacity:.7;max-width:460px;font-style:italic"></div>
   <button id="startBtn">ENTER THE REALM</button>
   <div class="credit">780 location dossiers · South Mumbai → Vasai-Virar → Thane → Bhiwandi-Kalyan → Navi Mumbai →
   Kharghar-Panvel → Uran &amp; JNPT → Raigad shore · built from the Mumbai_NaviMumbai_IslandGame prompt ·
