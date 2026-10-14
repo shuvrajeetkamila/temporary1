@@ -21,6 +21,13 @@ An open-world playable recreation of the Mumbai–Navi Mumbai island region, bui
 | Part D — NPC society | Archetypes from the dossiers (Koli fishers, dabbawalas at lunch hour, 8 am station crush, schoolchildren, port workers, pilgrims, joggers, night watchmen), umbrellas in the rain |
 | Part E — environment | Day/night sun arc for 19°N, seasons (Jun–Sep monsoon with rain/lightning/flooded shoulders), semi-diurnal ~4 m tides (M2+S2+spring/neap), flamingos on the Thane creek flats at low tide, kites, ferries, JNPT barges, fishing boats |
 | Part F — open data credit | Attribution in About + map footer (OpenStreetMap-derived geography, spec-verbatim location text) |
+| Dossier landmarks | Every one of the 780 POIs draws its own spec-described landmark (market hall, church, school, station, chowky, stepwell…) |
+| Stations | Railway station buildings at every stop of all 7 lines |
+| Ferries | Boardable passenger ferries — stand at a jetty, press E as a boat passes |
+| Economy | Delivery jobs between real dossiers (fish runs, dabbas, JNPT container papers, mango consignments), pay by distance, persistent wallet |
+| Soundscape | Procedural sea/city/rain/wind beds, thunder, traffic horns, two-tone EMU horns, dawn birdsong near parks & water |
+| Postcards | In-game photo capture stamped with the nearest dossier, saved on-device |
+| App identity | AI-painted Gateway-of-India launcher icon across all densities via hand-built resources.arsc |
 
 ## Controls
 

@@ -49,6 +49,42 @@
     src.start(); src.stop(A.ctx.currentTime + 2.6);
   });
 
+  // local-train horn: two-tone, flat-characteristic like a WR/CR EMU
+  G.on("trainstop", t => {
+    if (!A.ready || !A.on) return;
+    const d = G.dist(t.x, t.y, G.PL.x, G.PL.y);
+    if (d > 600) return;
+    const vol = 0.14 * (1 - d / 600);
+    const now = A.ctx.currentTime;
+    [440, 554].forEach(f0 => {
+      const o = A.ctx.createOscillator(), g = A.ctx.createGain();
+      o.type = "sawtooth"; o.frequency.value = f0;
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(vol, now + 0.05);
+      g.gain.setValueAtTime(vol, now + 0.55);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+      o.connect(g); g.connect(A.master);
+      o.start(now); o.stop(now + 0.85);
+    });
+  });
+
+  // dawn chorus near parks/beaches/water (5–8 h)
+  let birdT = 0;
+  function chirp() {
+    const now = A.ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const o = A.ctx.createOscillator(), g = A.ctx.createGain();
+      o.type = "sine";
+      const t0 = now + i * 0.14 + Math.random() * 0.05;
+      o.frequency.setValueAtTime(2100 + Math.random() * 1400, t0);
+      o.frequency.exponentialRampToValueAtTime(1400 + Math.random() * 900, t0 + 0.09);
+      g.gain.setValueAtTime(0.05, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.12);
+      o.connect(g); g.connect(A.master);
+      o.start(t0); o.stop(t0 + 0.14);
+    }
+  }
+
   A.update = function (dt) {
     if (!A.ready || !A.on) return;
     const pl = G.PL, env = G.ENV, t = G.ENV.t;
@@ -65,6 +101,16 @@
     if (Math.random() < dt * 0.25) {
       const c = G.TRAFFIC.cars.find(c => c.honk > 0 && G.dist(c.x, c.y, pl.x, pl.y) < 400);
       if (c) honk();
+    }
+    // dawn birdsong near green/water edges
+    birdT -= dt;
+    if (birdT <= 0) {
+      birdT = 4 + Math.random() * 6;
+      const h = env.hourFrac();
+      if (h >= 5 && h <= 8) {
+        const p = G.POI.nearest(pl.x, pl.y, 1400);
+        if (p && (p.cat === "nature" || p.cat === "beach" || p.cat === "lake" || p.cat === "water")) chirp();
+      }
     }
   };
   function honk() {
