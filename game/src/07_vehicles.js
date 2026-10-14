@@ -138,6 +138,13 @@
     const kind = G.TERRAIN.kindAt(PL.x, PL.y, tide);
     PL.lastTerrain = kind.water ? kind.kind : (kind.kind === "forest" ? "forest" : roadFactor(PL.x, PL.y) > 0 ? "road" : "land");
 
+    // riding a ferry as a passenger
+    if (G.TRAFFIC.ridingBoat) {
+      const b = G.TRAFFIC.ridingBoat;
+      PL.x = b.x; PL.y = b.y; PL.heading = b.hd; PL.v = b.v; PL.alt = 0;
+      return;
+    }
+
     if (PL.mode === "foot") {
       const run = k.ShiftLeft || k.ShiftRight || IN.btn.run;
       const vmax = run ? 4.4 : 1.7;

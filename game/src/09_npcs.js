@@ -95,12 +95,30 @@
     }
   };
 
+  // street chatter pools (built from spec flavor: figures, traffic, sounds)
+  const CHATTER = {
+    commuter: ["Which fast local goes to Dadar?", "Signal pe ruk ja bhai", "Meeting at 10, chai first"],
+    koli: ["Aaj laal machhli mili!", "Net theek karna padega", "Bandra pe muchli?", " Tide high hai re"],
+    vendor: ["Garam garam vada pav!", "Do rupee ka le lo", "Chai-kappa, fresh fresh"],
+    dabbawala: ["Ek hundred code, Vile Parle", "Dabba saaf hai, likh le"],
+    student: ["Exams ka kya hoga...", "Ground pe chalte hain"],
+    tourist: ["Is this the Gateway?", "One photo, please", "Exchange kahan milega?"],
+    portworker: ["Shift khatam hone do", "Crane number three band hai"],
+    pilgrim: ["Darshan kab hogi?", "Prasad le lo"],
+    jogger: ["One more round", "Sea face is best at dawn"],
+    resident: ["Pani nahi aa raha 11 baje se", "Lift phir se kharab!", "Monsoon mein yeh lane doob jaati hai"],
+    watchman: ["ID dikhao", "Sab theek hai sahab"]
+  };
+
   N.draw = function (ctx, z) {
     if (z < 1.1) return;
     const rain = G.ENV.rain, night = G.ENV.sun().day < 0.25;
+    const cam = G.CAM;
+    const slot = Math.floor(G.ENV.t / 5); // chatter rotates every ~5 game-min
+    let said = 0;
     for (const n of N.list) {
-      const [sx, sy] = G.CAM.w2s(n.x, n.y);
-      if (sx < -20 || sy < -30 || sx > G.CAM.w + 20 || sy > G.CAM.h + 20) continue;
+      const [sx, sy] = cam.w2s(n.x, n.y);
+      if (sx < -20 || sy < -30 || sx > cam.w + 20 || sy > cam.h + 20) continue;
       const r = Math.max(1.6, 0.45 * z);
       ctx.fillStyle = ARCH[n.arch].col;
       ctx.beginPath(); ctx.arc(sx, sy - r, r * 0.9, 0, 7); ctx.fill();          // head
@@ -110,6 +128,24 @@
         ctx.beginPath(); ctx.arc(sx, sy - r * 1.9, r * 1.5, Math.PI, 0); ctx.fill();
       } else if (night && n.arch === "vendor") {
         ctx.fillStyle = "rgba(255,220,120,0.8)"; ctx.beginPath(); ctx.arc(sx + r * 2, sy - r, r * 0.5, 0, 7); ctx.fill();
+      }
+      // street chatter: closest few NPCs speak, one line at a time
+      if (z > 2.2 && said < 3 && n.home) {
+        const d = G.dist(n.x, n.y, cam.x, cam.y);
+        if (d < 90 && G.hash2(n.x | 0, (n.y | 0) + slot) < 0.22) {
+          const pool = CHATTER[n.arch] || CHATTER.resident;
+          const line = pool[Math.floor(G.hash2((n.x | 0) + slot, n.y | 0) * pool.length)];
+          if (line) {
+            ctx.font = `${Math.min(11, 4 + z)}px system-ui`;
+            ctx.textAlign = "center";
+            const w = ctx.measureText(line).width + 10;
+            ctx.fillStyle = "rgba(10,18,28,0.82)";
+            ctx.fillRect(sx - w / 2, sy - r * 3 - 16, w, 15);
+            ctx.fillStyle = "#eef4f8";
+            ctx.fillText(line, sx, sy - r * 3 - 5);
+            said++;
+          }
+        }
       }
     }
   };

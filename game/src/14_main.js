@@ -20,6 +20,7 @@
     G.MAPS.fullmap.init(document.getElementById("fullmapCanvas"));
     G.UI.buildSide();
     G.UI.disc.markAll();
+    G.ECON.refresh();
     G.ENV.startRealClock();
 
     // start at the Gateway of India
@@ -102,6 +103,7 @@
       G.NPC.update(dt, G.CAM);
       G.CAM.update(G.PL.x, G.PL.y, dt);
       G.UI.tp.update(dt);
+      G.ECON.update(dt);
       G.AUDIO.update(dt);
       loop.discT += dt;
       if (loop.discT > 1) { loop.discT = 0; G.UI.disc.check(); }

@@ -141,5 +141,37 @@ t("spec flavor present on cards", () => {
   const p = G.POI.all.find(p => p.name === "Marine Drive");
   if (!p.moment || !p.figure) throw new Error("flavor missing");
 });
+t("economy: offers, accept, deliver, earn", () => {
+  const E = G.ECON;
+  E.refresh();
+  if (E.offers.length < 1) throw new Error("no job offers generated");
+  const o = E.offers[0];
+  const m0 = E.money;
+  E.accept(o.id);
+  if (!E.active) throw new Error("accept failed");
+  G.PL.x = o.dest.x; G.PL.y = o.dest.y;
+  E.update(0.016);
+  if (E.active) throw new Error("delivery did not complete");
+  if (E.money !== m0 + o.pay) throw new Error("pay not credited");
+});
+t("ferry boarding ride & alight", () => {
+  const TF = G.TRAFFIC;
+  TF.boats.length = 0;
+  // manufacture a ferry at the player's position on water
+  const sea = [G.PROJ.lonToX(72.75), G.PROJ.latToY(18.85)];
+  TF.boats.push({ route: [[0, 0]], d: 0, dir: 1, v: 5, vmax: 8, x: sea[0], y: sea[1], hd: 0, fisher: false, wake: 0 });
+  G.spawnVehicle("foot");
+  G.PL.x = sea[0]; G.PL.y = sea[1];
+  if (!G.boardFerry()) throw new Error("ferry boarding refused");
+  if (!G.TRAFFIC.ridingBoat) throw new Error("not riding");
+  G.updatePlayer(0.016);
+  if (!isFinite(G.PL.x)) throw new Error("NaN while riding");
+  G.alightFerry();
+  if (G.TRAFFIC.ridingBoat) throw new Error("still riding after alight");
+});
+t("npc chatter pool exists", () => {
+  // draw with chatter active must not throw
+  G.R.draw(0.016);
+});
 console.log("\nSmoke test complete.");
 process.exit(process.exitCode || 0);

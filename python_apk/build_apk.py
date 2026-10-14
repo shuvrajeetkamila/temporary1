@@ -69,17 +69,20 @@ def build_manifest():
     package = "com.arena.islandrealm"
     activity = "com.arena.islandrealm.MainActivity"
     theme = ("ref", axml.STYLE["Theme.Black.NoTitleBar.Fullscreen"])
+    icon = ("ref", 0x7F010000)   # @mipmap/ic_launcher: pkg 0x7F, type 1, ENTRY index 0
+    label = ("ref", 0x7F020000)  # @string/app_name
     manifest = axml.Node("manifest", [
         (None, "package", package),
-        A("versionCode", ("int", 1)),
-        A("versionName", "1.0"),
+        A("versionCode", ("int", 2)),
+        A("versionName", "1.2"),
     ], [
         axml.Node("uses-sdk", [
             A("minSdkVersion", ("int", 21)),
             A("targetSdkVersion", ("int", 29)),
         ]),
         axml.Node("application", [
-            A("label", "Island Realm: Mumbai–Navi Mumbai"),
+            A("label", label),
+            A("icon", icon),
             A("theme", theme),
             A("allowBackup", True),
             A("hasCode", True),
@@ -180,11 +183,21 @@ def assemble(dex, index_html, out_path):
     assert events[0][0] == "ns" and any(e[0] == "start" and e[1] == "manifest" for e in events)
     print(f"  axml ok: {len(manifest_xml)} bytes, {len(events)} events")
 
+    # resources: arsc + launcher icons at the exact paths the table references
+    import arsc
+    densities = [("mdpi", 160), ("hdpi", 240), ("xhdpi", 320), ("xxhdpi", 480), ("xxxhdpi", 640)]
+    arsc_bytes = arsc.build(densities, "Island Realm: Mumbai–Navi Mumbai")
+    res_files = [("resources.arsc", arsc_bytes)]
+    for d, _ in densities:
+        p = os.path.join(ROOT, "android/res", f"mipmap-{d}", "ic_launcher.png")
+        res_files.append((f"res/mipmap-{d}-v4/ic_launcher.png", open(p, "rb").read()))
+    print(f"  arsc ok: {len(arsc_bytes)} bytes + {len(res_files)-1} icons")
+
     files = [
         ("AndroidManifest.xml", manifest_xml),
         ("classes.dex", dex),
         ("assets/index.html", index_html),
-    ]
+    ] + res_files
     manifest_bytes, sections = jar_manifest(files)
     sf = sf_file(manifest_bytes, sections)
     key, cert = make_cert()
@@ -194,6 +207,8 @@ def assemble(dex, index_html, out_path):
         z.writestr(zipfile.ZipInfo("AndroidManifest.xml"), manifest_xml)
         z.writestr(zipfile.ZipInfo("classes.dex"), dex)
         z.writestr(zipfile.ZipInfo("assets/index.html"), index_html)
+        for name, data in res_files:
+            z.writestr(zipfile.ZipInfo(name), data)
         z.writestr(zipfile.ZipInfo("META-INF/MANIFEST.MF"), manifest_bytes)
         z.writestr(zipfile.ZipInfo("META-INF/CERT.SF"), sf)
         z.writestr(zipfile.ZipInfo("META-INF/CERT.RSA"), p7)
@@ -212,6 +227,13 @@ def validate(out_path):
     print("   activities:", acts)
     assert apk.package == "com.arena.islandrealm"
     assert "com.arena.islandrealm.MainActivity" in acts
+    print("  -- resource resolution (androguard) --")
+    icon = apk.get_app_icon(65536)
+    print("   app icon:", icon)
+    assert icon and "ic_launcher" in icon, "icon resource did not resolve"
+    lbl = apk.get_app_name()
+    print("   app label:", lbl)
+    assert "Island Realm" in (lbl or ""), "label resource did not resolve"
     print("  -- openssl PKCS#7 --")
     import tempfile
     with zipfile.ZipFile(out_path) as z:

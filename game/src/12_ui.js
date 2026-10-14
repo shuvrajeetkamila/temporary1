@@ -83,6 +83,7 @@
     $("spdVal").textContent = veh.air ? Math.round(G.PL.v * 3.6) + " · alt " + Math.round(G.PL.alt) + "m" : G.fmt.kmh(Math.abs(G.PL.v));
     $("spdLbl").textContent = veh.n;
     $("discoverBox").textContent = "📍 " + DISC.count() + " / 780 discovered";
+    if (G.ECON) G.ECON.hud();
     const crowd = G.NPC.crowdLine(G.PL.x, G.PL.y);
     $("locSub").textContent = sub + (crowd ? " — " + crowd : "");
   };
@@ -100,6 +101,32 @@
       g.appendChild(b);
     }
     openModal("vehModal");
+  };
+
+  // ---------- jobs board ----------
+  UI.openJobs = () => {
+    const E = G.ECON;
+    E.refresh();
+    let html = `<h2>Work board — Mumbai doesn't sleep</h2>
+      <p>Wallet: <b style="color:#ffd97f">₹${E.money}</b> · deliveries done: ${E.deliveries}</p>`;
+    if (E.active) {
+      const o = E.active;
+      const d = Math.round(G.dist(G.PL.x, G.PL.y, o.dest.x, o.dest.y));
+      html += `<div class="panel" style="padding:10px;margin:8px 0">📋 <b>${o.tr.label}</b><br>
+        <small>to ${o.dest.name} · ${G.fmt.m(o.dist)} · ₹${o.pay}</small><br>
+        <small>${d < 250 ? "✅ You're here — delivering…" : "still " + G.fmt.m(d) + " away — follow the 📍 marker"}</small></div>`;
+    } else {
+      html += E.offers.map(o => `<div class="panel" style="padding:10px;margin:8px 0">
+        <b>${o.tr.label}</b> <small>· ${G.fmt.m(o.dist)}</small><br>
+        <small>${o.origin.name} → ${o.dest.name}</small><br>
+        <button class="abtn" data-acc="${o.id}">Accept (₹${o.pay})</button>
+        <button class="abtn warn" data-dec="${o.id}">Pass</button></div>`).join("");
+      if (!E.offers.length) html += "<p>No work offers right now — wander a bit.</p>";
+    }
+    $("jobsGrid").innerHTML = html;
+    document.querySelectorAll("[data-acc]").forEach(b => b.onclick = () => { G.ECON.accept(b.dataset.acc); closeModals(); });
+    document.querySelectorAll("[data-dec]").forEach(b => b.onclick = () => { G.ECON.decline(b.dataset.dec); UI.openJobs(); });
+    openModal("jobsModal");
   };
 
   // ---------- modals ----------
@@ -191,13 +218,17 @@
   };
   hold("bThrUp", "thrUp"); hold("bThrDn", "thrDn");
   $("bEnter").onclick = () => {
+    if (G.TRAFFIC.ridingBoat) { G.alightFerry(); return; }
     if (G.PL.mode === "train") { G.alightTrain(); return; }
-    if (G.PL.mode === "foot") { if (!G.boardTrain()) G.emit("toast", "Walk into a vehicle and press 🚗 to spawn one, or board a stopped train."); }
-    else G.exitVehicle();
+    if (G.PL.mode === "foot") {
+      if (!G.boardTrain() && !G.boardFerry())
+        G.emit("toast", "Walk into a vehicle and press 🚗 to spawn one, or board a stopped train / ferry.");
+    } else G.exitVehicle();
   };
   $("bVeh").onclick = () => UI.openVeh();
   $("bMap").onclick = () => G.MAPS.fullmap.show();
   $("bTp").onclick = () => { G.MAPS.fullmap.show(); G.emit("toast", "Pick a dot, then “Teleport here”."); };
+  $("bJobs").onclick = () => UI.openJobs();
   $("bHelp").onclick = () => openModal("helpModal");
   $("bSound").onclick = () => { UI.sound = !UI.sound; $("bSound").textContent = UI.sound ? "🔊" : "🔇"; G.emit("sound", UI.sound); };
 
@@ -227,6 +258,7 @@
       case "KeyM": G.MAPS.fullmap.open ? G.MAPS.fullmap.hide() : G.MAPS.fullmap.show(); break;
       case "KeyV": UI.openVeh(); break;
       case "KeyT": $("bTp").onclick(); break;
+      case "KeyJ": UI.openJobs(); break;
       case "KeyE": $("bEnter").onclick(); break;
       case "KeyH": openModal("helpModal"); break;
       case "Escape": closeModals(); G.MAPS.fullmap.hide(); break;

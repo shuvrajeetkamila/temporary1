@@ -95,6 +95,7 @@
 <div id="speedBox" class="panel"><div id="spdVal">0</div><div id="spdLbl">km/h</div></div>
 <div id="tpCharges" class="panel">✨ Teleports: ◆◆◆</div>
 <div id="discoverBox" class="panel">📍 0 / 780 discovered</div>
+<div id="moneyBox" class="panel" style="position:fixed;top:92px;left:10px;z-index:4;font-size:12px;padding:4px 9px;">₹0</div>
 
 <div id="joyBase"><div id="joyKnob"></div></div>
 <div id="btnCol">
@@ -111,6 +112,7 @@
     <button class="gbtn" id="bTp">✨<span class="sub">T</span></button>
   </div>
   <div class="btnRow">
+    <button class="gbtn small" id="bJobs">📋<span class="sub">J</span></button>
     <button class="gbtn small" id="bHelp">❓</button>
     <button class="gbtn small" id="bSound">🔇</button>
   </div>
@@ -131,6 +133,12 @@
     <div id="fmSide"></div>
   </div>
 </div>
+
+<!-- jobs board -->
+<div class="modal" id="jobsModal"><div class="box panel">
+  <button class="close" data-close="jobsModal">✕</button>
+  <div id="jobsGrid"></div>
+</div></div>
 
 <!-- vehicle menu -->
 <div class="modal" id="vehModal"><div class="box panel">

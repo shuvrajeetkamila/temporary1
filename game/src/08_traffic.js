@@ -120,7 +120,7 @@
     if (TF.boats.length < 7 && Math.random() < 0.1) TF.spawnBoat(cam.x, cam.y);
     for (let i = TF.boats.length - 1; i >= 0; i--) {
       const b = TF.boats[i];
-      if (G.dist(b.x, b.y, cam.x, cam.y) > 4200) { TF.boats.splice(i, 1); continue; }
+      if (G.dist(b.x, b.y, cam.x, cam.y) > 4200) { if (TF.ridingBoat === b) TF.ridingBoat = null; TF.boats.splice(i, 1); continue; }
       b.d += b.v * b.dir;
       const L = lineLen(b.route);
       if (b.d > L - 20) { b.dir = -1; }
@@ -189,6 +189,44 @@
       return true;
     }
     G.PL.say("Train is moving — wait for the next station.");
+    return true;
+  };
+
+  // board a passing ferry / fishing boat (spec: "ferries connect koliwadas")
+  G.boardFerry = function () {
+    if (G.TRAFFIC.ridingBoat) return false;
+    const tide = G.ENV.tide();
+    if (!G.TERRAIN.waterAt(G.PL.x, G.PL.y, tide) && G.TERRAIN.depth(G.PL.x, G.PL.y, tide) < 0.2) {
+      // allow boarding from jetties: water within 25 m
+      let nearWater = false;
+      for (const wl of G.W.water) { if (G.polyDist(G.PL.x, G.PL.y, wl.pts) < 40) { nearWater = true; break; } }
+      if (!nearWater) return false;
+    }
+    for (const b of TF.boats) {
+      if (!b.fisher && G.dist(b.x, b.y, G.PL.x, G.PL.y) < 40) {
+        TF.ridingBoat = b;
+        G.PL.say("⛴️ Boarded the " + (b.route === W.ferries ? "" : "crossing ") + "ferry. Press E to step off.");
+        G.emit("toast", "⛴️ Aboard — the boatman nods towards the horizon.");
+        return true;
+      }
+    }
+    return false;
+  };
+  G.alightFerry = function () {
+    if (!TF.ridingBoat) return false;
+    const b = TF.ridingBoat;
+    TF.ridingBoat = null;
+    // step onto nearest land within 120 m of the boat, else stay aboard-side in shallow water
+    let px = b.x, py = b.y, found = false;
+    for (let r = 10; r <= 130; r += 12) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        const tx = b.x + Math.cos(a) * r, ty = b.y + Math.sin(a) * r;
+        if (!G.TERRAIN.waterAt(tx, ty, G.ENV.tide())) { px = tx; py = ty; found = true; break; }
+      }
+      if (found) break;
+    }
+    G.PL.x = px; G.PL.y = py;
+    G.PL.say("You step ashore at " + (G.POI.nearest(px, py, 1600) || { name: "the jetty" }).name + ".");
     return true;
   };
 
