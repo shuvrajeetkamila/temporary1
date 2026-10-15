@@ -88,6 +88,8 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<canvas id="game3d" style="position:fixed;inset:0;display:none;touch-action:none"></canvas>
+<div id="errOverlay" style="display:none;position:fixed;left:8px;right:8px;bottom:8px;z-index:99;background:rgba(120,10,10,0.94);color:#fff;padding:10px;border-radius:10px;font:12px monospace;max-height:40vh;overflow:auto"></div>
 
 <div id="locBox" class="panel"><div id="locName">…</div><div id="locSub"></div></div>
 <div id="envBox" class="panel"></div>
@@ -108,6 +110,7 @@
     <button class="gbtn" id="bVeh">🚗<span class="sub">V</span></button>
   </div>
   <div class="btnRow">
+    <button class="gbtn" id="b3d" title="3D world (F6 cycles cam)">🌐<span class="sub">3D</span></button>
     <button class="gbtn" id="bMap">🗺️<span class="sub">M</span></button>
     <button class="gbtn" id="bTp">✨<span class="sub">T</span></button>
   </div>
@@ -199,8 +202,20 @@
   geography after OpenStreetMap contributors · offline playable</div>
 </div>
 
+<script src="vendor/three.min.js"></script>
+<script src="data/streets_real.js"></script>
 <script>
 /*__GAME_SCRIPT__*/
+</script>
+<script>
+// boot watchdog + error surfacing (never fail silently on device)
+(function(){
+  var ov=document.getElementById("errOverlay"), shown=false;
+  function show(m){ shown=true; ov.style.display="block"; ov.textContent="[error] "+m; }
+  window.addEventListener("error",function(e){ show((e.message||"error")+" @ "+(e.filename||"?")+":"+(e.lineno||"?")); });
+  window.addEventListener("unhandledrejection",function(e){ show("promise: "+(e.reason&&e.reason.message||e.reason)); });
+  setTimeout(function(){ if(!shown && !window.G) show("Engine did not boot. WebView too old? File this: "+navigator.userAgent); },6000);
+})();
 </script>
 </body>
 </html>

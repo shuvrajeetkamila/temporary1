@@ -55,10 +55,11 @@ sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
 const html = fs.readFileSync("www/index.html", "utf8");
-const m = html.match(/<script>([\s\S]*)<\/script>/);
+const m = html.match(/<script>\s*\/\* ===== 00_boot[\s\S]*?<\/script>/);
 if (!m) { console.error("no script found"); process.exit(1); }
+const code = m[0].replace(/^<script>/, "").replace(/<\/script>$/, "");
 try {
-  vm.runInContext(m[1], sandbox, { filename: "bundle.js" });
+  vm.runInContext(code, sandbox, { filename: "bundle.js" });
 } catch (e) {
   console.error("BOOT FAIL:", e.stack);
   process.exit(1);

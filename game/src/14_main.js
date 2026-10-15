@@ -110,7 +110,8 @@
       loop.saveT += dt;
       if (loop.saveT > 12) { loop.saveT = 0; G.store.set("save", { x: G.PL.x, y: G.PL.y, t: G.ENV.t, mode: G.PL.mode, z: G.CAM.zoom }); }
     }
-    G.R.draw(dt);
+    if (G.TW && G.TW.ready && G.TW.active) G.TW.render(dt);
+    else G.R.draw(dt);
     G.MAPS.minimap.draw();
     loop.hudT += dt;
     if (loop.hudT > 0.25) { loop.hudT = 0; G.UI.refreshHud(); }

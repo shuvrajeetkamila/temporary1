@@ -280,6 +280,7 @@
   };
   $("bVeh").onclick = () => UI.openVeh();
   $("bMap").onclick = () => G.MAPS.fullmap.show();
+  $("b3d").onclick = () => G.TW.toggle();
   $("bTp").onclick = () => { G.MAPS.fullmap.show(); G.emit("toast", "Pick a dot, then “Teleport here”."); };
   $("bJobs").onclick = () => UI.openJobs();
   $("bPhoto").onclick = () => UI.openPhotos();
