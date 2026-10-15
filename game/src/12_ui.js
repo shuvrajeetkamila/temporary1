@@ -143,7 +143,13 @@
     if (!ph.length) html += "<p style='opacity:.7'>No postcards yet — go watch a monsoon evening at Marine Drive.</p>";
     $("photosGrid").innerHTML = html;
     $("takeShot").onclick = () => {
-      const c = G.R.cvs;
+      // capture whichever view is active; re-render 3D first so the WebGL
+      // buffer is fresh (WebGL canvases blank otherwise on readback)
+      let c = G.R.cvs;
+      if (G.TW && G.TW.active && G.TW.ready && G.TW.renderer) {
+        G.TW.renderer.render(G.TW.scene, G.TW.cam);
+        c = G.TW.renderer.domElement;
+      }
       const t = document.createElement("canvas");
       t.width = 360; t.height = Math.round(360 * c.height / c.width);
       const g = t.getContext("2d");
