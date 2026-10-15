@@ -213,11 +213,20 @@
       <div class="flavor">${flavor}</div>
       <button class="abtn" id="cTp">✨ Teleport here (1 ◆)</button>
       <button class="abtn" id="cWay">📍 Set waypoint</button>
+      <button class="abtn" id="c3d">🌐 3D orbit view</button>
       <button class="abtn warn" id="cGo">🎬 View on ground</button>`;
     c.style.display = "block";
     $("cTp").onclick = () => { if (UI.tp.use(p.x, p.y, p.name)) { G.MAPS.fullmap.hide(); closeModals(); } };
     $("cWay").onclick = () => { G.WAYPOINT.set(p.x, p.y, p.name); G.emit("toast", "📍 Waypoint: " + p.name); };
     $("cGo").onclick = () => { G.MAPS.fullmap.hide(); G.CAM.jumpTo(p.x, p.y, 2.5); G.CAM.follow = false; closeModals(); };
+    $("c3d").onclick = () => {
+      G.MAPS.fullmap.hide(); closeModals();
+      G.PL.x = p.x; G.PL.y = p.y; G.PL.v = 0;
+      G.CAM.follow = true;
+      if (G.TW && (!G.TW.ready || !G.TW.active)) G.TW.toggle();
+      if (G.TW.ready) { G.TW.camMode = 3; G.TW.orbit.dist = 150; }
+      G.emit("toast", "🌐 Orbiting " + p.name + " — drag to rotate");
+    };
   });
 
   // side panel

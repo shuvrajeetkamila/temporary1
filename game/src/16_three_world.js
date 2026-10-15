@@ -251,6 +251,9 @@
       buildLandmarks();
       buildEntities();
       buildRain();
+      buildVegetation();
+      buildStations();
+      buildAirports();
       window.addEventListener("resize", () => {
         r.setSize(window.innerWidth, window.innerHeight, false);
         TW.cam.aspect = window.innerWidth / window.innerHeight;
@@ -317,10 +320,10 @@
       ...a, mesh: null, cx: (a.bb[0] + a.bb[2]) / 2, cy: (a.bb[1] + a.bb[3]) / 2
     }));
     TW.streetMats = [
-      new THREE.MeshLambertMaterial({ color: 0x2a2a30 }),
-      new THREE.MeshLambertMaterial({ color: 0x3a3a42 }),
-      new THREE.MeshLambertMaterial({ color: 0x44444c }),
-      new THREE.MeshLambertMaterial({ color: 0x55555c }),
+      new THREE.MeshPhongMaterial({ color: 0x2a2a30, specular: 0x223038, shininess: 8 }),
+      new THREE.MeshPhongMaterial({ color: 0x3a3a42, specular: 0x223038, shininess: 8 }),
+      new THREE.MeshPhongMaterial({ color: 0x44444c, specular: 0x223038, shininess: 8 }),
+      new THREE.MeshPhongMaterial({ color: 0x55555c, specular: 0x223038, shininess: 8 }),
       new THREE.MeshLambertMaterial({ color: 0x606066 }),
       new THREE.MeshLambertMaterial({ color: 0x8a8578 })
     ];
@@ -481,6 +484,53 @@
     TW.bldMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     TW.bldMesh = null;
     TW.bldAnchor = [1e9, 1e9];
+    // REAL footprints (tools/import_footprints.py -> data/buildings_real.js)
+    TW.realAreas = (typeof BUILDINGS3D !== "undefined" ? BUILDINGS3D.areas : []).map(a => ({
+      ...a, mesh: null, cx: (a.bb[0] + a.bb[2]) / 2, cy: (a.bb[1] + a.bb[3]) / 2
+    }));
+  }
+
+  function ensureRealBuildings(area) {
+    if (area.mesh) return;
+    const geos = [];
+    const cols = [];
+    for (const b of area.bldgs) {
+      const n = b.p.length / 2;
+      if (n < 3) continue;
+      const shape = new THREE.Shape();
+      shape.moveTo(b.p[0], b.p[1]);
+      for (let i = 1; i < n; i++) shape.lineTo(b.p[i * 2], b.p[i * 2 + 1]);
+      const g = new THREE.ExtrudeGeometry(shape, { depth: b.h, bevelEnabled: false });
+      g.rotateX(-Math.PI / 2);
+      geos.push(g);
+      // height-tinted color per building
+      const c = new THREE.Color(0xcfc5b4).lerp(new THREE.Color(0x8fb2c8), Math.min(1, b.h / 120));
+      const vc = new Float32Array(g.attributes.position.count * 3);
+      for (let i = 0; i < g.attributes.position.count; i++) { vc[i * 3] = c.r; vc[i * 3 + 1] = c.g; vc[i * 3 + 2] = c.b; }
+      g.setAttribute("color", new THREE.BufferAttribute(vc, 3));
+    }
+    if (!geos.length) return;
+    // merge non-indexed geoms (position+normal+uv+color)
+    let count = 0;
+    geos.forEach(g => count += g.attributes.position.count);
+    const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3);
+    let o = 0;
+    geos.forEach(g => {
+      pos.set(g.attributes.position.array, o * 3);
+      if (g.attributes.normal) nor.set(g.attributes.normal.array, o * 3);
+      if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
+      col.set(g.attributes.color.array, o * 3);
+      o += g.attributes.position.count;
+    });
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    merged.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+    merged.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    merged.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
+    mesh.position.y = 0;
+    area.mesh = mesh;
+    TW.scene.add(mesh);
   }
 
   function rebuildBuildings() {
@@ -491,7 +541,8 @@
     // A) real-street infill: player inside an OSM area -> fill blocks between streets
     let area = null;
     for (const a of TW.streetAreas) if (cam.x > a.bb[0] && cam.x < a.bb[2] && cam.y > a.bb[1] && cam.y < a.bb[3]) { area = a; break; }
-    if (area) {
+    const inReal = TW.realAreas.find(ra => cam.x > ra.bb[0] - 60 && cam.x < ra.bb[2] + 60 && cam.y > ra.bb[1] - 60 && cam.y < ra.bb[3] + 60);
+    if (area && !inReal) {
       const grid = segGridFor(area);
       const STEP = 26;
       const x0 = Math.floor((cam.x - R) / STEP) * STEP, x1 = cam.x + R, y0 = Math.floor((cam.y - R) / STEP) * STEP, y1 = cam.y + R;
@@ -540,6 +591,129 @@
     TW.bldMesh = mesh;
     TW.bldAnchor = [cam.x, cam.y];
     TW.scene.add(mesh);
+  }
+
+  // ---------------- vegetation: palms on coasts, canopies in forests ----------------
+  function buildVegetation() {
+    TW.palmTrunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.4, 9, 5), new THREE.MeshLambertMaterial({ color: 0x9a7a5a }), 220);
+    TW.palmCrown = new THREE.InstancedMesh(new THREE.ConeGeometry(3.4, 2.2, 6), new THREE.MeshLambertMaterial({ color: 0x4a7a3a }), 220);
+    TW.canopy = new THREE.InstancedMesh(new THREE.SphereGeometry(5, 7, 5), new THREE.MeshLambertMaterial({ color: 0x3a5c2e }), 320);
+    [TW.palmTrunk, TW.palmCrown, TW.canopy].forEach(m => { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); TW.scene.add(m); });
+    TW.vegAnchor = [1e9, 1e9];
+  }
+
+  function rebuildVegetation() {
+    const pl = G.PL, m = TW._m4, q = TW._q, s = TW._s, p = TW._p, col = TW._col;
+    const rnd = G.rng((pl.x | 0) * 13 + (pl.y | 0) * 3);
+    let pi = 0, ci = 0;
+    // palms: coastal strips near player
+    for (let i = 0; i < 1400 && pi < 220; i++) {
+      const a = rnd() * Math.PI * 2, d = 60 + Math.sqrt(rnd()) * 1400;
+      const x = pl.x + Math.cos(a) * d, y = pl.y + Math.sin(a) * d;
+      if (G.TERRAIN.waterAt(x, y, 1.5)) continue;
+      if (G.TERRAIN.elev(x, y) > 7) continue;
+      let nearWater = false;
+      for (const wl of G.W.water) if (G.polyDist(x, y, wl.pts) < 160) { nearWater = true; break; }
+      if (!nearWater && G.TERRAIN.landAt(x, y) && !G.TERRAIN.hillAt(x, y)) { /* inland strip palms rarer */ if (rnd() > 0.25) continue; }
+      p.set(x, elevAt(x, y), y); q.identity(); s.set(1, 1, 1);
+      m.compose(p, q, s);
+      TW.palmTrunk.setMatrixAt(pi, m);
+      p.set(x, elevAt(x, y) + 5.4, y);
+      m.compose(p, q, s);
+      TW.palmCrown.setMatrixAt(pi, m);
+      TW.palmCrown.setColorAt(pi, col.setHex(0x4a7a3a + Math.floor(rnd() * 0x183018)));
+      pi++;
+    }
+    for (let i = pi; i < 220; i++) { p.set(0, -60, 0); s.set(0.001, 0.001, 0.001); q.identity(); m.compose(p, q, s); TW.palmTrunk.setMatrixAt(i, m); TW.palmCrown.setMatrixAt(i, m); }
+    // forest canopies
+    for (let i = 0; i < 2600 && ci < 320; i++) {
+      const a = rnd() * Math.PI * 2, d = 80 + Math.sqrt(rnd()) * 1800;
+      const x = pl.x + Math.cos(a) * d, y = pl.y + Math.sin(a) * d;
+      if (!G.TERRAIN.forestAt(x, y)) continue;
+      p.set(x, elevAt(x, y) + 5 + rnd() * 4, y);
+      q.identity();
+      const sc = 0.7 + rnd() * 0.9;
+      s.set(sc, sc * 0.85, sc);
+      m.compose(p, q, s);
+      TW.canopy.setMatrixAt(ci, m);
+      TW.canopy.setColorAt(ci, col.setHex(0x3a5c2e + Math.floor(rnd() * 0x1c2c14)));
+      ci++;
+    }
+    for (let i = ci; i < 320; i++) { p.set(0, -60, 0); s.set(0.001, 0.001, 0.001); q.identity(); m.compose(p, q, s); TW.canopy.setMatrixAt(i, m); }
+    TW.palmTrunk.instanceMatrix.needsUpdate = true;
+    TW.palmCrown.instanceMatrix.needsUpdate = true;
+    TW.canopy.instanceMatrix.needsUpdate = true;
+    if (TW.palmCrown.instanceColor) TW.palmCrown.instanceColor.needsUpdate = true;
+    if (TW.canopy.instanceColor) TW.canopy.instanceColor.needsUpdate = true;
+    TW.vegAnchor = [pl.x, pl.y];
+  }
+
+  // ---------------- railway stations: platforms + buildings + FOBs ----------------
+  function buildStations() {
+    const platMat = new THREE.MeshLambertMaterial({ color: 0xb8b2a4 });
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0xa04038 });
+    const steelM = new THREE.MeshLambertMaterial({ color: 0x7a8288 });
+    TW.stationGroups = [];
+    for (const rail of G.W.rails) {
+      if (rail.kind === "metro") continue;
+      rail.st.forEach((st, si) => {
+        const g = new THREE.Group();
+        const plat = B(platMat, 130, 1.1, 8, 0, 0.55, 0);
+        g.add(plat);
+        const roof = B(roofMat, 110, 0.5, 9, 0, 5.2, 0);
+        g.add(roof);
+        for (const px of [-45, -15, 15, 45]) g.add(C(steelM, 0.25, 0.3, 5, px, 2.6, 0, 6));
+        const bld = B(new THREE.MeshLambertMaterial({ color: 0xe2d8c8 }), 22, 6, 14, 0, 3, -12);
+        g.add(bld);
+        const bldRoof = B(roofMat, 24, 0.6, 16, 0, 6.3, -12);
+        g.add(bldRoof);
+        if (si % 3 === 0) { // foot-over-bridge
+          g.add(B(steelM, 3, 0.4, 44, 0, 7.6, 0));
+          g.add(C(steelM, 0.3, 0.35, 7.6, -30, 3.8, 0, 6));
+          g.add(C(steelM, 0.3, 0.35, 7.6, 30, 3.8, 0, 6));
+        }
+        // perpendicular to track
+        g.rotation.y = -G.angTo(rail.pts[0][0], rail.pts[0][1], rail.pts[1][0], rail.pts[1][1]) + Math.PI / 2;
+        g.position.set(st.x, elevAt(st.x, st.y), st.y);
+        TW.scene.add(g);
+        TW.stationGroups.push({ g, x: st.x, y: st.y });
+      });
+    }
+  }
+
+  // ---------------- airports ----------------
+  function buildAirports() {
+    for (const ap of G.W.airports) {
+      const g = new THREE.Group();
+      const [x1, y1] = ap.pts[0], [x2, y2] = ap.pts[1];
+      const L = G.dist(x1, y1, x2, y2), a = G.angTo(x1, y1, x2, y2);
+      const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+      // runway slab
+      g.add(B(new THREE.MeshLambertMaterial({ color: 0x3c4046 }), L, 0.5, 45, 0, 0.25, 0, -a));
+      // centreline
+      g.add(B(new THREE.MeshLambertMaterial({ color: 0xd8d4c0 }), L * 0.92, 0.1, 1, 0, 0.55, 0, -a));
+      if (ap.big) {
+        // T2-style terminal + pier
+        const term = B(new THREE.MeshLambertMaterial({ color: 0xd8dee6 }), 320, 24, 90, 260, 12, 0, -a);
+        g.add(term);
+        const roofC = Dome(new THREE.MeshLambertMaterial({ color: 0xc0c8d4 }), 46, 260, 24, 0);
+        roofC.scale.set(3.4, 0.4, 1); roofC.rotation.y = -a;
+        g.add(roofC);
+        // control tower
+        g.add(C(new THREE.MeshLambertMaterial({ color: 0xd8dee6 }), 5, 7, 52, 150, 26, -70));
+        g.add(C(new THREE.MeshLambertMaterial({ color: 0x46505a }), 9, 9, 8, 150, 56, -70, 10));
+        // parked aircraft
+        for (const off of [-60, 30]) {
+          const fus = C(new THREE.MeshLambertMaterial({ color: 0xf2f4f6 }), 2.6, 2.6, 38, 190 + off, 5, -52, 8);
+          fus.rotation.z = Math.PI / 2; fus.rotation.y = -a;
+          g.add(fus);
+          g.add(B(new THREE.MeshLambertMaterial({ color: 0xd0d6dc }), 6, 0.8, 34, 190 + off, 4.6, -52, -a));
+        }
+      }
+      g.position.set(cx, elevAt(cx, cy) + 0.2, cy);
+      TW.scene.add(g);
+      TW.lms.push({ g, x: cx, z: cy });
+    }
   }
 
   // ---------------- 3D entities (player, traffic, trains, boats, crowd) ----------------
@@ -681,6 +855,13 @@
     TW.sun.position.set(Math.cos(az) * 8000, Math.max(200, Math.sin(env.sun().alt + 0.2) * 9000), Math.sin(az) * 8000);
     TW.sun.intensity = 0.25 + day * 1.1;
     TW.hemi.intensity = 0.25 + day * 0.7;
+    // wet-road sheen in rain
+    const wet = Math.max(0, env.rain - 0.15);
+    for (let i = 0; i < 4; i++) {
+      const m2 = TW.streetMats[i];
+      m2.specular.setHex(0x223038).lerp(new THREE.Color(0xbcd8ee), Math.min(1, wet * 1.6));
+      m2.shininess = 8 + wet * 140;
+    }
     TW.water.position.y = 1.0 + env.tide() * 0.35;
     TW.waterMat.opacity = 0.72 + 0.2 * day;
     if (G.dist(pl.x, pl.y, TW.bldAnchor[0], TW.bldAnchor[1]) > 900) rebuildBuildings();
@@ -693,8 +874,15 @@
         a.mesh.position.y = Math.min(6, Math.max(0, elevAt(a.cx, a.cy) - 1.5));
       }
     }
-    // landmark culling
+    for (const ra of TW.realAreas) {
+      const want = G.dist(pl.x, pl.y, ra.cx, ra.cy) < 9000;
+      if (want && !ra.mesh) { ensureRealBuildings(ra); if (ra.mesh) G.emit("toast", "🏙️ Real footprints loaded: " + ra.name); }
+      if (ra.mesh) ra.mesh.visible = want;
+    }
+    // landmark + station culling; vegetation streaming
     for (const lm of TW.lms) lm.g.visible = G.dist(pl.x, pl.y, lm.x, lm.z) < 10000;
+    for (const sg of TW.stationGroups) sg.g.visible = G.dist(pl.x, pl.y, sg.x, sg.y) < 2600;
+    if (G.dist(pl.x, pl.y, TW.vegAnchor[0], TW.vegAnchor[1]) > 1600) rebuildVegetation();
     updateEntities();
     // rain follows camera
     if (TW.rain) {

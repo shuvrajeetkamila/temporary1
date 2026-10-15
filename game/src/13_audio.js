@@ -68,6 +68,37 @@
     });
   });
 
+  // two-tone station announcement chime
+  G.on("trainstop", t => {
+    if (!A.ready || !A.on) return;
+    const d = G.dist(t.x, t.y, G.PL.x, G.PL.y);
+    if (d > 300) return;
+    const now = A.ctx.currentTime;
+    [880, 660].forEach((f0, i) => {
+      const o = A.ctx.createOscillator(), g = A.ctx.createGain();
+      o.type = "sine"; o.frequency.value = f0;
+      const t0 = now + 0.7 + i * 0.45;
+      g.gain.setValueAtTime(0.09, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.4);
+      o.connect(g); g.connect(A.master);
+      o.start(t0); o.stop(t0 + 0.45);
+    });
+  });
+
+  // temple bell: damped partials
+  function bell() {
+    const now = A.ctx.currentTime;
+    [1, 2.02, 2.96, 4.1].forEach((mult, i) => {
+      const o = A.ctx.createOscillator(), g = A.ctx.createGain();
+      o.type = "sine"; o.frequency.value = 520 * mult;
+      const vol = 0.10 / (i + 1);
+      g.gain.setValueAtTime(vol, now);
+      g.gain.exponentialRampToValueAtTime(0.0005, now + 3.2 - i * 0.5);
+      o.connect(g); g.connect(A.master);
+      o.start(now); o.stop(now + 3.4);
+    });
+  }
+
   // dawn chorus near parks/beaches/water (5–8 h)
   let birdT = 0;
   function chirp() {
@@ -101,6 +132,14 @@
     if (Math.random() < dt * 0.25) {
       const c = G.TRAFFIC.cars.find(c => c.honk > 0 && G.dist(c.x, c.y, pl.x, pl.y) < 400);
       if (c) honk();
+    }
+    // temple bells near temples (heavier at aarti hours)
+    if (Math.random() < dt * 0.05) {
+      const p2 = G.POI.nearest(pl.x, pl.y, 700);
+      if (p2 && p2.cat === "temple") {
+        const h2 = env.hourFrac();
+        if ((h2 > 5 && h2 < 9) || (h2 > 17 && h2 < 20) || Math.random() < 0.25) bell();
+      }
     }
     // dawn birdsong near green/water edges
     birdT -= dt;
