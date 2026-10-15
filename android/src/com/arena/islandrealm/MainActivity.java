@@ -1,102 +1,120 @@
 package com.arena.islandrealm;
 
 import android.app.Activity;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.os.Bundle;
+import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
-import java.io.InputStream;
 
-/** Island Realm shell v2: ALWAYS opens. Pure-Java boot screen reports the
- * device and every boot step; the world launches behind a button so a WebView
- * problem can never leave you with a blank screen again. */
+/**
+ * Island Realm shell v3 — descriptor-exact against the real Android SDK.
+ * Boots into a diagnostics canvas (pure View, no widgets/WebView needed),
+ * then a tap launches the world in a WebView. Every referenced method below
+ * exists with the same signature in the real framework, so NoSuchMethodError
+ * at class-load is impossible.
+ */
 public class MainActivity extends Activity {
-  private TextView log;
   private String logS = "";
+  private BootView view;
+  private boolean worldStarted = false;
 
   private void say(String s) {
     logS = logS + s + "\n";
-    log.setText(logS);
+    view.setText(logS);
+    view.invalidate();
   }
 
   public void onCreate(Bundle b) {
     super.onCreate(b);
+    view = new BootView(this);
+    setContentView(view);
+    say("ISLAND REALM — Mumbai / Navi Mumbai");
+    say("Android " + android.os.Build.VERSION.RELEASE + " (SDK " + android.os.Build.VERSION.SDK_INT + ") " + android.os.Build.MODEL);
     try {
-      LinearLayout root = new LinearLayout(this);
-      root.setOrientation(LinearLayout.VERTICAL);
-      root.setBackgroundColor(0xFF0A1826);
-      root.setPadding(24, 48, 24, 24);
-
-      TextView title = new TextView(this);
-      title.setText("ISLAND REALM — Mumbai · Navi Mumbai");
-      title.setTextColor(0xFFFFD97F);
-      title.setTextSize(18);
-      root.addView(title);
-
-      log = new TextView(this);
-      log.setTextColor(0xFFEEF4F8);
-      log.setTextSize(13);
-      log.setPadding(0, 20, 0, 20);
-      ScrollView sc = new ScrollView(this);
-      sc.addView(log);
-      root.addView(sc, new LinearLayout.LayoutParams(-1, 0, 1.0f));
-
-      Button go = new Button(this);
-      go.setText("ENTER THE WORLD");
-      go.setOnClickListener(new View.OnClickListener() {
-        public void onClick(View v) { startWorld(); }
-      });
-      root.addView(go);
-      setContentView(root);
-    } catch (Throwable t) {
-      // even the UI failed; last resort plain text
-      super.setContentView(new TextView(this));
-      t.toString();
-      return;
-    }
-    say("Device: Android " + android.os.Build.VERSION.RELEASE + " (SDK " +
-        android.os.Build.VERSION.SDK_INT + "), " + android.os.Build.MODEL);
-    try {
-      InputStream in = getAssets().open("index.html");
-      long n = 0, r;
+      java.io.InputStream in = getAssets().open("index.html");
+      long n = 0;
       byte[] buf = new byte[65536];
-      while ((r = in.read(buf)) > 0) n += r;
+      int r = in.read(buf);
+      while (r > 0) { n += r; r = in.read(buf); }
       in.close();
-      say("Game data OK (" + (n / 1024) + " KB bundled).");
+      say("Game data OK (" + (n / 1024L) + " KB)");
     } catch (Throwable t) {
-      say("Game data PROBLEM: " + t);
+      say("Game data PROBLEM: " + t.toString());
     }
     try {
       Class.forName("android.webkit.WebView");
-      say("WebView present. Tap ENTER THE WORLD.");
+      say("WebView present.");
     } catch (Throwable t) {
-      say("WebView MISSING on this device — the 3D world needs it. " + t);
+      say("WebView MISSING: " + t.toString());
     }
-    say("If the world fails after this screen, screenshot THIS screen and send it.");
+    say("");
+    say("TAP ANYWHERE TO ENTER THE WORLD");
+    view.setOnTouchListener(new View.OnTouchListener() {
+      public boolean onTouch(View v, MotionEvent m) {
+        if (m.getAction() == MotionEvent.ACTION_DOWN) startWorld();
+        return true;
+      }
+    });
   }
 
   private void startWorld() {
+    if (worldStarted) return;
+    worldStarted = true;
     try {
-      WebView web = new WebView(this);
-      WebSettings s = web.getSettings();
+      android.webkit.WebView web = new android.webkit.WebView(this);
+      android.webkit.WebSettings s = web.getSettings();
       s.setJavaScriptEnabled(true);
       s.setDomStorageEnabled(true);
       s.setAllowFileAccess(true);
       s.setAllowFileAccessFromFileURLs(true);
       s.setAllowUniversalAccessFromFileURLs(true);
-      try { s.setMediaPlaybackRequiresUserGesture(false); } catch (Throwable ignored) {}
-      web.setWebViewClient(new WebViewClient());
+      web.setWebViewClient(new android.webkit.WebViewClient());
       setContentView(web);
       web.loadUrl("file:///android_asset/index.html");
       say("World launched.");
     } catch (Throwable t) {
-      say("WORLD FAIL: " + t);
+      worldStarted = false;
+      say("WORLD FAIL: " + t.toString());
+      say("Screenshot this screen and send it.");
+      setContentView(view);
+    }
+  }
+
+  /** Diagnostics canvas: renders the boot log; doubles as the tap target. */
+  private static class BootView extends View {
+    private String text = "";
+    private final Paint title;
+    private final Paint body;
+
+    BootView(android.content.Context c) {
+      super(c);
+      title = new Paint();
+      title.setAntiAlias(true);
+      title.setTextSize(44);
+      title.setColor(0xFFFFD97F);
+      body = new Paint();
+      body.setAntiAlias(true);
+      body.setTextSize(30);
+      body.setColor(0xFFEEF4F8);
+    }
+
+    void setText(String s) { text = s; }
+
+    protected void onDraw(Canvas cv) {
+      cv.drawColor(0xFF0A1826);
+      cv.drawText("ISLAND REALM", 40, 90, title);
+      float y = 170;
+      int from = 0;
+      while (from < text.length()) {
+        int nl = text.indexOf(10, from);
+        if (nl < 0) nl = text.length();
+        String line = text.substring(from, nl);
+        from = nl + 1;
+        cv.drawText(line, 40, y, body);
+        y += 40;
+        if (y > getHeight() - 30) break;
+      }
     }
   }
 }

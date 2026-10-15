@@ -1,7 +1,6 @@
 package android.webkit;
-import android.view.View;
-public class WebView extends View {
-  public WebView(Object context) {}
+public class WebView extends android.view.View {
+  public WebView(android.content.Context c) { super(c); }
   public WebSettings getSettings() { return null; }
   public void setWebViewClient(WebViewClient c) {}
   public void loadUrl(String url) {}

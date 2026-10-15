@@ -57,6 +57,7 @@ def compile_java():
     dex = open(dex_out, "rb").read()
     assert dex[:4] == b"dex\n" and struct.unpack_from("<I", dex, 32)[0] == len(dex), "bad dex"
     print(f"  dex ok: {len(dex)} bytes")
+    validate_dex_callsites(dex)
     return dex
 
 
@@ -73,11 +74,11 @@ def build_manifest():
     label = ("ref", 0x7F020000)  # @string/app_name
     manifest = axml.Node("manifest", [
         (None, "package", package),
-        A("versionCode", ("int", 9)),
-        A("versionName", "1.9"),
+        A("versionCode", ("int", 10)),
+        A("versionName", "2.0"),
     ], [
         axml.Node("uses-sdk", [
-            A("minSdkVersion", ("int", 23)),
+            A("minSdkVersion", ("int", 21)),
             A("targetSdkVersion", ("int", 29)),
         ]),
         axml.Node("application", [
@@ -274,6 +275,51 @@ def validate(out_path):
             got = [l.split(": ", 1)[1] for l in ssect.split("\r\n") if l.startswith("SHA-256-Digest:")][0]
             assert got == want, f".SF section digest mismatch for {name}"
     print("  jar digest chain verified")
+
+
+def validate_dex_callsites(dex_bytes):
+    """FAIL the build if any android.* method ref uses java.lang.Object params
+    (the stub-descriptor bug that made every previous build crash on device)."""
+    d = dex_bytes
+    def u32(o): return struct.unpack_from("<I", d, o)[0]
+    def u16(o): return struct.unpack_from("<H", d, o)[0]
+    str_size, str_off = u32(56), u32(60)
+    strings = []
+    for i in range(str_size):
+        off = u32(str_off + 4 * i)
+        result = 0; shift = 0; p = off
+        while True:
+            b = d[p]; p += 1
+            result |= (b & 0x7f) << shift
+            if not (b & 0x80): break
+            shift += 7
+        strings.append(d[p:p + result].decode("utf-8", "replace"))
+    type_off = u32(68)
+    proto_off, proto_size = u32(76), u32(72)
+    def t(idx): return strings[u32(type_off + 4 * idx)]
+    protos = []
+    for i in range(proto_size):
+        o = proto_off + i * 12
+        ret = t(u32(o + 4)); pp = u32(o + 8)
+        sig = "("
+        if pp:
+            n = u16(pp)
+            for j in range(n): sig += t(u16(pp + 2 + 2 * j))
+        protos.append(sig + ")" + ret)
+    meth_size, meth_off = u32(88), u32(92)
+    bad = []
+    refs = []
+    for i in range(meth_size):
+        o = meth_off + i * 8
+        cls = t(u16(o)); name = strings[u32(o + 4)]; sig = protos[u16(o + 2)]
+        refs.append(f"{cls}->{name} {sig}")
+        if cls.startswith("Landroid/") and "Ljava/lang/Object;" in sig:
+            bad.append(refs[-1])
+    print("  dex method refs (" + str(len(refs)) + "):")
+    for r in sorted(set(refs)):
+        print("   ", r)
+    assert not bad, "STUB-DESCRIPTOR BUG REGRESSION: " + "; ".join(bad)
+    print("  no Object-typed android callsites — descriptor-safe")
 
 
 def main():
