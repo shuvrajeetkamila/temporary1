@@ -73,8 +73,8 @@ def build_manifest():
     label = ("ref", 0x7F020000)  # @string/app_name
     manifest = axml.Node("manifest", [
         (None, "package", package),
-        A("versionCode", ("int", 7)),
-        A("versionName", "1.7"),
+        A("versionCode", ("int", 8)),
+        A("versionName", "1.8"),
     ], [
         axml.Node("uses-sdk", [
             A("minSdkVersion", ("int", 23)),
@@ -199,6 +199,7 @@ def assemble(dex, index_html, out_path):
         ("assets/index.html", index_html),
         ("assets/vendor/three.min.js", open(os.path.join(ROOT, "www/vendor/three.min.js"), "rb").read()),
         ("assets/data/streets_real.js", open(os.path.join(ROOT, "www/data/streets_real.js"), "rb").read()),
+        ("assets/data/dem.js", open(os.path.join(ROOT, "www/data/dem.js"), "rb").read()),
     ] + res_files
     manifest_bytes, sections = jar_manifest(files)
     sf = sf_file(manifest_bytes, sections)

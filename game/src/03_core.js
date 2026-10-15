@@ -53,6 +53,7 @@
   W.regionLabels = GEO.REGION_LABELS.map(l => ({ n: l.n, s: l.s, x: P.lonToX(l.lon), y: P.latToY(l.lat) }));
   G.W = W;
   G.bbox = bbox;
+  G.DEM = typeof SPEC_DEM !== "undefined" ? SPEC_DEM : null;
 
   // ---------------- POI INDEX ----------------
   const pois = typeof POIS !== "undefined" ? POIS : [];
@@ -152,6 +153,17 @@
       return 0;
     },
     elev(x, y) {
+      // real grid (spec dossiers / SRTM via build_dem.py) when available
+      if (G.DEM) {
+        const D = G.DEM;
+        const fx = (P.xToLon(x) - D.x0) / D.dx, fy = (D.y0 + D.ny * D.dy - P.yToLat(y)) / D.dy;
+        if (fx >= 0 && fy >= 0 && fx < D.nx - 1 && fy < D.ny - 1) {
+          const x0 = fx | 0, y0 = fy | 0, tx = fx - x0, ty = fy - y0, N = D.nx;
+          const v = D.h[y0 * N + x0] * (1 - tx) * (1 - ty) + D.h[y0 * N + x0 + 1] * tx * (1 - ty) +
+                    D.h[(y0 + 1) * N + x0] * (1 - tx) * ty + D.h[(y0 + 1) * N + x0 + 1] * tx * ty;
+          return Math.max(0.4, v + (G.hash2(Math.round(x / 60), Math.round(y / 60)) - 0.5) * 1.6);
+        }
+      }
       let e = 3;
       const h = this.hillAt(x, y);
       if (h) e = Math.max(e, h.h * (0.55 + 0.45 * G.hash2(Math.round(x / 500), Math.round(y / 500))));

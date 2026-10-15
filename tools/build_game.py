@@ -26,6 +26,7 @@ def main():
     os.makedirs("www/data", exist_ok=True)
     shutil.copyfile("game/vendor/three.min.js", "www/vendor/three.min.js")
     shutil.copyfile("game/data/streets_real.json", "www/data/streets_real.js")
+    shutil.copyfile("game/data/dem.js", "www/data/dem.js")
     io.open(OUT, "w", encoding="utf-8").write(html)
     print(f"bundled {len(FILES)} files -> {OUT} ({len(html)/1024:.0f} KB) + vendor/three + data/streets")
 

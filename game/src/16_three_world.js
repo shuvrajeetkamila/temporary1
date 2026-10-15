@@ -250,6 +250,7 @@
       buildBuildingRigs();
       buildLandmarks();
       buildEntities();
+      buildRain();
       window.addEventListener("resize", () => {
         r.setSize(window.innerWidth, window.innerHeight, false);
         TW.cam.aspect = window.innerWidth / window.innerHeight;
@@ -380,9 +381,59 @@
       const geos = byClass[c].map(st => ribbonGeometry(st.p, st.w));
       group.add(new THREE.Mesh(mergeGeoms(geos), TW.streetMats[c]));
     }
+    // curbs (lighter wider band under main carriageway) + lane dashes, big roads
+    const curbGeos = [], dashGeos = [];
+    for (const st of area.streets) {
+      if (st.c <= 3) curbGeos.push(ribbonGeometry(st.p, st.w + 5));
+      if (st.c <= 2) {
+        const p = st.p;
+        for (let i = 0; i < p.length / 2 - 1; i++) {
+          const x1 = p[i * 2], y1 = p[i * 2 + 1], x2 = p[i * 2 + 2], y2 = p[i * 2 + 3];
+          const L = G.dist(x1, y1, x2, y2);
+          if (L < 8) continue;
+          const n = Math.floor(L / 16);
+          const dx = (x2 - x1) / L, dy = (y2 - y1) / L;
+          for (let k = 0; k < n; k++) {
+            const cx = x1 + dx * (k * 16 + 5), cy = y1 + dy * (k * 16 + 5);
+            dashGeos.push(ribbonGeometry([cx - dx * 3, cy - dy * 3, cx + dx * 3, cy + dy * 3], 0.35));
+          }
+        }
+      }
+    }
+    if (curbGeos.length) {
+      const curb = new THREE.Mesh(mergeGeoms(curbGeos), new THREE.MeshLambertMaterial({ color: 0x7a756a }));
+      curb.position.y = -0.08;
+      group.add(curb);
+    }
+    if (dashGeos.length) {
+      const dashes = new THREE.Mesh(mergeGeoms(dashGeos), new THREE.MeshLambertMaterial({ color: 0xd8d4c0 }));
+      dashes.position.y = 0.16;
+      group.add(dashes);
+    }
     group.position.y = 0.6;
     area.mesh = group;
     TW.scene.add(group);
+  }
+
+  // ---------------- weather: 3D rain ----------------
+  function buildRain() {
+    const n = 1400;
+    const pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 900;
+      pos[i * 3 + 1] = Math.random() * 260;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 900;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    TW.rain = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xaaccee, size: 2.2, transparent: true, opacity: 0.55 }));
+    TW.rain.visible = false;
+    TW.scene.add(TW.rain);
+    // headlights (night)
+    TW.light = new THREE.SpotLight(0xfff2c0, 0, 140, 0.5, 0.45);
+    TW.lightTarget = new THREE.Object3D();
+    TW.scene.add(TW.light); TW.scene.add(TW.lightTarget);
+    TW.light.target = TW.lightTarget;
   }
 
   // ---------------- buildings: street-block infill + POI clusters ----------------
@@ -645,6 +696,31 @@
     // landmark culling
     for (const lm of TW.lms) lm.g.visible = G.dist(pl.x, pl.y, lm.x, lm.z) < 10000;
     updateEntities();
+    // rain follows camera
+    if (TW.rain) {
+      const on = env.rain > 0.05;
+      TW.rain.visible = on;
+      if (on) {
+        TW.rain.position.set(pl.x, 0, pl.y);
+        const pos = TW.rain.geometry.attributes.position;
+        const fall = 320 * dt * (0.6 + env.rain);
+        for (let i = 0; i < pos.count; i++) {
+          let y = pos.getY(i) - fall;
+          if (y < 0) y = 260;
+          pos.setY(i, y);
+        }
+        pos.needsUpdate = true;
+        TW.rain.material.opacity = 0.25 + env.rain * 0.4;
+      }
+    }
+    // headlights at night for ground vehicles
+    const night = day < 0.25;
+    const groundVeh = !G.VEHTYPES[pl.mode].air && !G.VEHTYPES[pl.mode].water && pl.mode !== "foot";
+    TW.light.intensity = night && groundVeh ? 1.5 : 0;
+    if (night && groundVeh) {
+      TW.light.position.set(pl.x, elevAt(pl.x, pl.y) + 2, pl.y);
+      TW.lightTarget.position.set(pl.x + Math.sin(pl.heading) * 60, elevAt(pl.x, pl.y), pl.y + Math.cos(pl.heading) * 60);
+    }
     // camera
     const eye = new THREE.Vector3(pl.x, elevAt(pl.x, pl.y), pl.y);
     const hd = pl.heading;
