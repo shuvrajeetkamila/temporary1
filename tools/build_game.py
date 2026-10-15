@@ -27,8 +27,12 @@ def main():
     shutil.copyfile("game/vendor/three.min.js", "www/vendor/three.min.js")
     shutil.copyfile("game/data/streets_real.json", "www/data/streets_real.js")
     shutil.copyfile("game/data/dem.js", "www/data/dem.js")
+    if os.path.exists("game/data/buildings_real.js"):
+        shutil.copyfile("game/data/buildings_real.js", "www/data/buildings_real.js")
+    else:
+        io.open("www/data/buildings_real.js", "w").write("const BUILDINGS3D={areas:[]};\n")
     io.open(OUT, "w", encoding="utf-8").write(html)
-    print(f"bundled {len(FILES)} files -> {OUT} ({len(html)/1024:.0f} KB) + vendor/three + data/streets")
+    print(f"bundled {len(FILES)} files -> {OUT} ({len(html)/1024:.0f} KB) + vendor/three + data/streets + data/buildings")
 
 if __name__ == "__main__":
     main()

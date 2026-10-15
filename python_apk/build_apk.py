@@ -74,8 +74,8 @@ def build_manifest():
     label = ("ref", 0x7F020000)  # @string/app_name
     manifest = axml.Node("manifest", [
         (None, "package", package),
-        A("versionCode", ("int", 10)),
-        A("versionName", "2.0"),
+        A("versionCode", ("int", 11)),
+        A("versionName", "2.1"),
     ], [
         axml.Node("uses-sdk", [
             A("minSdkVersion", ("int", 21)),
@@ -201,6 +201,7 @@ def assemble(dex, index_html, out_path):
         ("assets/vendor/three.min.js", open(os.path.join(ROOT, "www/vendor/three.min.js"), "rb").read()),
         ("assets/data/streets_real.js", open(os.path.join(ROOT, "www/data/streets_real.js"), "rb").read()),
         ("assets/data/dem.js", open(os.path.join(ROOT, "www/data/dem.js"), "rb").read()),
+        ("assets/data/buildings_real.js", open(os.path.join(ROOT, "www/data/buildings_real.js"), "rb").read()),
     ] + res_files
     manifest_bytes, sections = jar_manifest(files)
     sf = sf_file(manifest_bytes, sections)
@@ -208,11 +209,13 @@ def assemble(dex, index_html, out_path):
     p7 = pkcs7_sign(sf, key, cert)
 
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        z.writestr(zipfile.ZipInfo("AndroidManifest.xml"), manifest_xml)
-        z.writestr(zipfile.ZipInfo("classes.dex"), dex)
-        z.writestr(zipfile.ZipInfo("assets/index.html"), index_html)
-        for name, data in res_files:
-            z.writestr(zipfile.ZipInfo(name), data)
+        # write EVERY signed entry (assets included — they were silently
+        # dropped before v2.1, leaving the world without its 3D engine/data)
+        for name, data in files:
+            zi = zipfile.ZipInfo(name)
+            zi.compress_type = zipfile.ZIP_STORED if name.endswith(".arsc") else zipfile.ZIP_DEFLATED
+            zi.external_attr = 0o644 << 16
+            z.writestr(zi, data)
         z.writestr(zipfile.ZipInfo("META-INF/MANIFEST.MF"), manifest_bytes)
         z.writestr(zipfile.ZipInfo("META-INF/CERT.SF"), sf)
         z.writestr(zipfile.ZipInfo("META-INF/CERT.RSA"), p7)
@@ -251,6 +254,13 @@ def validate(out_path):
                             "-content", p1, "-in", p2], capture_output=True, text=True)
         print("   openssl:", r.stderr.strip() or "verify ok")
         assert "Verification successful" in r.stderr
+    # every world asset must physically exist in the zip (v2.0 regression guard)
+    with zipfile.ZipFile(out_path) as z:
+        names = set(z.namelist())
+        for req in ["assets/index.html", "assets/vendor/three.min.js", "assets/data/streets_real.js",
+                    "assets/data/dem.js", "assets/data/buildings_real.js", "resources.arsc", "classes.dex"]:
+            assert req in names, "MISSING FROM APK: " + req
+        print("   apk entries ok:", len(names), "files")
     # digest cross-check: MANIFEST covers every file
     with zipfile.ZipFile(out_path) as z:
         for name, data in [("AndroidManifest.xml", z.read("AndroidManifest.xml")),

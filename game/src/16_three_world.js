@@ -252,6 +252,9 @@
       buildEntities();
       buildRain();
       buildVegetation();
+      buildKoliwadas();
+      buildMarkets();
+      buildClouds();
       buildStations();
       buildAirports();
       window.addEventListener("resize", () => {
@@ -488,6 +491,28 @@
     TW.realAreas = (typeof BUILDINGS3D !== "undefined" ? BUILDINGS3D.areas : []).map(a => ({
       ...a, mesh: null, cx: (a.bb[0] + a.bb[2]) / 2, cy: (a.bb[1] + a.bb[3]) / 2
     }));
+    // occupancy grid: real buildings suppress procedural infill around themselves
+    TW.occ = new Map(); TW.occCell = 70;
+    for (const ra of TW.realAreas) for (const b of ra.bldgs) {
+      const xs = [], ys = [];
+      for (let i = 0; i < b.p.length; i += 2) { xs.push(b.p[i]); ys.push(b.p[i + 1]); }
+      let cx = 0, cy = 0, x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      for (let i = 0; i < xs.length; i++) { cx += xs[i]; cy += ys[i]; if (xs[i] < x0) x0 = xs[i]; if (xs[i] > x1) x1 = xs[i]; if (ys[i] < y0) y0 = ys[i]; if (ys[i] > y1) y1 = ys[i]; }
+      cx /= xs.length; cy /= ys.length;
+      const r = Math.max(3, Math.sqrt((x1 - x0) * (y1 - y0)) / 2 + 16);
+      const k = Math.floor(cx / TW.occCell) + "," + Math.floor(cy / TW.occCell);
+      const e = TW.occ.get(k); if (e) e.push([cx, cy, r]); else TW.occ.set(k, [[cx, cy, r]]);
+    }
+  }
+  function nearReal(x, y) {
+    if (!TW.occ || !TW.occ.size) return false;
+    const C = TW.occCell, gx = Math.floor(x / C), gy = Math.floor(y / C);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const c = TW.occ.get((gx + i) + "," + (gy + j));
+      if (!c) continue;
+      for (const o of c) { const dx = x - o[0], dy = y - o[1], rr = o[2]; if (dx * dx + dy * dy < rr * rr) return true; }
+    }
+    return false;
   }
 
   function ensureRealBuildings(area) {
@@ -541,8 +566,7 @@
     // A) real-street infill: player inside an OSM area -> fill blocks between streets
     let area = null;
     for (const a of TW.streetAreas) if (cam.x > a.bb[0] && cam.x < a.bb[2] && cam.y > a.bb[1] && cam.y < a.bb[3]) { area = a; break; }
-    const inReal = TW.realAreas.find(ra => cam.x > ra.bb[0] - 60 && cam.x < ra.bb[2] + 60 && cam.y > ra.bb[1] - 60 && cam.y < ra.bb[3] + 60);
-    if (area && !inReal) {
+    if (area) {
       const grid = segGridFor(area);
       const STEP = 26;
       const x0 = Math.floor((cam.x - R) / STEP) * STEP, x1 = cam.x + R, y0 = Math.floor((cam.y - R) / STEP) * STEP, y1 = cam.y + R;
@@ -551,11 +575,18 @@
         for (let y = y0; y <= y1 && list.length < 1100; y += STEP) {
           const jx = x + (rnd() - 0.5) * 14, jy = y + (rnd() - 0.5) * 14;
           if (nearStreet(area, grid, jx, jy, 15)) continue;
+          if (nearReal(jx, jy)) continue;
           if (G.TERRAIN.waterAt(jx, jy, 1.5)) continue;
           const p = nearPOI.length ? nearPOI[Math.min(nearPOI.length - 1, Math.floor(rnd() * 3))] : null;
           const pal = p ? p.palette : "";
           const hgt = 6 + rnd() * 24 + (rnd() < 0.08 ? 30 + rnd() * 40 : 0);
-          list.push({ x: jx, y: jy, w: 11 + rnd() * 18, hgt, col: palHex(pal, rnd) });
+          if (rnd() < 0.17 && hgt < 26) {
+            // Mumbai chawl: 4-floor walk-up bars around an open courtyard
+            const ch = 13 + rnd() * 3.5, bw = 20 + rnd() * 10, bd = 6 + rnd() * 2;
+            const col = palHex("concrete", rnd), rot = rnd() < 0.5 ? 0 : Math.PI / 2;
+            const put = (ox, oy, w, d) => list.push({ x: jx + ox * (rot ? 0 : 1) + oy * (rot ? 1 : 0), y: jy - ox * (rot ? 1 : 0) + oy * (rot ? 0 : 1), w: rot ? d : w, d: rot ? w : d, hgt: ch, col, rot });
+            put(0, -bd * 1.7, bw, bd); put(0, bd * 1.7, bw, bd); put(bw / 2 + bd * 0.8, 0, bw * 0.72, bd);
+          } else list.push({ x: jx, y: jy, w: 11 + rnd() * 18, hgt, col: palHex(pal, rnd) });
         }
       }
     } else {
@@ -580,9 +611,9 @@
     const mesh = new THREE.InstancedMesh(box, TW.bldMat, list.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
     list.forEach((b, i) => {
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (b.x + b.y) % 3);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), b.rot !== undefined ? b.rot : (b.x + b.y) % 3);
       p.set(b.x, elevAt(b.x, b.y) + b.hgt / 2 - 0.5, b.y);
-      s.set(b.w, b.hgt, b.w * 0.8);
+      s.set(b.w, b.hgt, b.d || b.w * 0.8);
       m.compose(p, q, s);
       mesh.setMatrixAt(i, m);
       mesh.setColorAt(i, col.setHex(b.col));
@@ -646,6 +677,148 @@
     if (TW.palmCrown.instanceColor) TW.palmCrown.instanceColor.needsUpdate = true;
     if (TW.canopy.instanceColor) TW.canopy.instanceColor.needsUpdate = true;
     TW.vegAnchor = [pl.x, pl.y];
+  }
+
+  // ---------------- koliwada hut clusters (real coastal fishing villages) ----------------
+  const KOLIWADAS = [
+    ["Worli", -13885, -10062], ["Versova", -11308, 4036], ["Dharavi", -9835, -5971],
+    ["Sassoon", -14674, -21230], ["Mahim", -11256, -6634], ["Chimbai", -12991, -5197],
+    ["Madh", -15884, 6745], ["Manori", -17146, 9288], ["Marve", -16410, 5529], ["Uttan", -17567, 10394]
+  ];
+  function buildKoliwadas() {
+    TW.koliAnchor = [1e9, 1e9];
+    TW.koliBody = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), 700);
+    TW.koliRoof = new THREE.InstancedMesh(new THREE.ConeGeometry(1.3, 1.6, 4), new THREE.MeshLambertMaterial({ color: 0xffffff }), 700);
+    [TW.koliBody, TW.koliRoof].forEach(m => { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); TW.scene.add(m); });
+    TW.koliTorch = new THREE.PointLight(0xffa050, 0, 70);
+    TW.scene.add(TW.koliTorch);
+  }
+  function rebuildKoliwadas() {
+    const pl = G.PL, m = TW._m4, q = TW._q, s = TW._s, p = TW._p, col = TW._col;
+    let n = 0;
+    const rots = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2];
+    for (const [name, kx, ky] of KOLIWADAS) {
+      if (G.dist(pl.x, pl.y, kx, ky) > 1700) continue;
+      const rnd = G.rng(kx * 3 + ky);
+      for (let i = 0; i < 70 && n < 700; i++) {
+        const a = rnd() * Math.PI * 2, d = 10 + Math.sqrt(rnd()) * 190;
+        const x = kx + Math.cos(a) * d * 1.25, y = ky + Math.sin(a) * d;
+        if (G.TERRAIN.waterAt(x, y, 2)) continue;
+        if (G.TERRAIN.elev(x, y) > 9) continue;
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rots[(rnd() * 4) | 0]);
+        const w = 2.6 + rnd() * 1.6, hh = 2.3 + rnd() * 1.1;
+        p.set(x, elevAt(x, y) + hh / 2, y); s.set(w, hh, w * 0.85); m.compose(p, q, s);
+        TW.koliBody.setMatrixAt(n, m);
+        TW.koliBody.setColorAt(n, col.setHex(rnd() < 0.5 ? 0xc9b291 : (rnd() < 0.5 ? 0x9fb6c4 : 0x7ba3c9)));
+        p.y += hh / 2 + 0.8; s.set(1, 1, 1); m.compose(p, q, s);
+        TW.koliRoof.setMatrixAt(n, m);
+        TW.koliRoof.setColorAt(n, col.setHex(rnd() < 0.6 ? 0xa85c38 : 0x8a4a30));
+        n++;
+      }
+    }
+    TW.koliBody.count = n; TW.koliRoof.count = n;
+    TW.koliBody.instanceMatrix.needsUpdate = true; TW.koliRoof.instanceMatrix.needsUpdate = true;
+    if (TW.koliBody.instanceColor) TW.koliBody.instanceColor.needsUpdate = true;
+    if (TW.koliRoof.instanceColor) TW.koliRoof.instanceColor.needsUpdate = true;
+    TW.koliAnchor = [pl.x, pl.y];
+  }
+
+  // ---------------- night-market light spill (real market streets) ----------------
+  const MARKETS = [
+    ["Crawford Market", -12307, -16807], ["Mohammed Ali Rd", -12150, -15591], ["Zaveri Bazaar", -12360, -16641],
+    ["Chor Bazaar", -12307, -13601], ["Dadar Market", -11150, -9012], ["Linking Rd", -12360, -4368]
+  ];
+  function buildMarkets() {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 128;
+    const g2 = cv.getContext("2d");
+    const gr = g2.createRadialGradient(64, 64, 6, 64, 64, 64);
+    gr.addColorStop(0, "rgba(255,176,90,0.85)"); gr.addColorStop(0.5, "rgba(255,150,60,0.30)"); gr.addColorStop(1, "rgba(255,140,50,0)");
+    g2.fillStyle = gr; g2.fillRect(0, 0, 128, 128);
+    TW.mktDecal = new THREE.Mesh(new THREE.PlaneGeometry(150, 110),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5 }));
+    TW.mktDecal.rotation.x = -Math.PI / 2; TW.mktDecal.visible = false;
+    TW.scene.add(TW.mktDecal);
+    TW.mktLight = new THREE.PointLight(0xffa044, 0, 110); TW.scene.add(TW.mktLight);
+    TW.mktLight2 = new THREE.PointLight(0xff9040, 0, 80); TW.scene.add(TW.mktLight2);
+    TW.mktBulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.35, 5, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }), 120);
+    TW.mktBulbs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    TW.scene.add(TW.mktBulbs);
+  }
+  function updateMarkets(day) {
+    const pl = G.PL, m = TW._m4, q = TW._q, s = TW._s, p = TW._p, col = TW._col;
+    let best = null;
+    if (day < 0.3) for (const mk of MARKETS) {
+      if (!best || G.dist(pl.x, pl.y, mk[1], mk[2]) < G.dist(pl.x, pl.y, best[1], best[2])) best = mk;
+    }
+    const d0 = best ? G.dist(pl.x, pl.y, best[1], best[2]) : 1e9;
+    if (!best || d0 > 800) {
+      TW.mktDecal.visible = false; TW.mktLight.intensity = 0; TW.mktLight2.intensity = 0; TW.mktBulbs.count = 0;
+      return;
+    }
+    const mx = best[1], my = best[2], ey = elevAt(mx, my);
+    TW.mktDecal.position.set(mx, ey + 0.4, my);
+    TW.mktDecal.material.opacity = Math.max(0.15, 0.6 - d0 / 1400);
+    TW.mktDecal.visible = true;
+    TW.mktLight.position.set(mx, ey + 7, my);
+    TW.mktLight.intensity = Math.max(0, 1.5 - d0 / 700);
+    TW.mktLight2.position.set(mx + 34, ey + 5, my + 18);
+    TW.mktLight2.intensity = Math.max(0, 1.1 - d0 / 700);
+    const rnd = G.rng(mx * 5 + my);
+    let n = 0;
+    const cols = [0xffd9a0, 0xa0d8ff, 0xffa0a0, 0xa0ffc8, 0xfff0b0];
+    for (let line = 0; line < 4 && n < 120; line++) {
+      const ang = rnd() * Math.PI, len = 26 + rnd() * 30;
+      const sx = mx + (rnd() - 0.5) * 50, sz = my + (rnd() - 0.5) * 40;
+      const lc = cols[(rnd() * cols.length) | 0];
+      for (let i = 0; i < 12 && n < 120; i++) {
+        const t = i / 11, sag = Math.sin(t * Math.PI) * 0.8;
+        p.set(sx + Math.cos(ang) * len * t, ey + 3.1 - sag, sz + Math.sin(ang) * len * t);
+        q.identity(); s.set(1, 1, 1); m.compose(p, q, s);
+        TW.mktBulbs.setMatrixAt(n, m);
+        TW.mktBulbs.setColorAt(n, col.setHex(rnd() < 0.75 ? lc : 0xffffff));
+        n++;
+      }
+    }
+    TW.mktBulbs.count = n;
+    TW.mktBulbs.instanceMatrix.needsUpdate = true;
+    if (TW.mktBulbs.instanceColor) TW.mktBulbs.instanceColor.needsUpdate = true;
+  }
+
+  // ---------------- monsoon cloud deck (low, dark, drifting) ----------------
+  function buildClouds() {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 128;
+    const g2 = cv.getContext("2d");
+    const gr = g2.createRadialGradient(64, 64, 8, 64, 64, 64);
+    gr.addColorStop(0, "rgba(255,255,255,0.95)"); gr.addColorStop(0.6, "rgba(255,255,255,0.42)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+    g2.fillStyle = gr; g2.fillRect(0, 0, 128, 128);
+    TW.cloudMat = new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(cv), transparent: true, opacity: 0, depthWrite: false,
+      color: 0x9aa8b4, side: THREE.DoubleSide, fog: false
+    });
+    TW.clouds = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), TW.cloudMat, 300);
+    TW.clouds.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const rnd = G.rng(7712);
+    for (let i = 0; i < 300; i++) {
+      const x = (rnd() - 0.5) * 15000, z = (rnd() - 0.5) * 15000, y = 950 + rnd() * 420;
+      const w = 260 + rnd() * 480;
+      TW._p.set(x, y, z); TW._q.identity(); TW._s.set(w, 1, w * 0.42);
+      TW._m4.compose(TW._p, TW._q, TW._s);
+      TW.clouds.setMatrixAt(i, TW._m4);
+    }
+    TW.clouds.instanceMatrix.needsUpdate = true;
+    TW.clouds.frustumCulled = false;
+    TW.clouds.visible = false;
+    TW.scene.add(TW.clouds);
+  }
+  function updateClouds(dt, day, rain) {
+    const on = rain > 0.03;
+    TW.clouds.visible = on;
+    if (!on) return;
+    TW.cloudDrift = (TW.cloudDrift || 0) + dt * 14;
+    const qx = Math.round(G.PL.x / 2000) * 2000, qz = Math.round(G.PL.y / 2000) * 2000;
+    TW.clouds.position.set(qx + (TW.cloudDrift % 900), 0, qz + (TW.cloudDrift % 700));
+    TW.cloudMat.opacity = Math.min(0.62, 0.16 + rain * 0.5);
+    TW.cloudMat.color.setHex(0x9aa8b4).lerp(new THREE.Color(0x3e4650), Math.min(1, rain));
   }
 
   // ---------------- railway stations: platforms + buildings + FOBs ----------------
@@ -877,12 +1050,21 @@
     for (const ra of TW.realAreas) {
       const want = G.dist(pl.x, pl.y, ra.cx, ra.cy) < 9000;
       if (want && !ra.mesh) { ensureRealBuildings(ra); if (ra.mesh) G.emit("toast", "🏙️ Real footprints loaded: " + ra.name); }
-      if (ra.mesh) ra.mesh.visible = want;
+      if (ra.mesh) { ra.mesh.visible = want; ra.mesh.position.y = Math.max(0, elevAt(ra.cx, ra.cy) - 2); }
     }
     // landmark + station culling; vegetation streaming
     for (const lm of TW.lms) lm.g.visible = G.dist(pl.x, pl.y, lm.x, lm.z) < 10000;
     for (const sg of TW.stationGroups) sg.g.visible = G.dist(pl.x, pl.y, sg.x, sg.y) < 2600;
     if (G.dist(pl.x, pl.y, TW.vegAnchor[0], TW.vegAnchor[1]) > 1600) rebuildVegetation();
+    if (G.dist(pl.x, pl.y, TW.koliAnchor[0], TW.koliAnchor[1]) > 1600) rebuildKoliwadas();
+    updateMarkets(day);
+    updateClouds(dt, day, env.rain);
+    if (TW.koliTorch) {
+      let best = null, bd2 = 250000;
+      for (const kw of KOLIWADAS) { const d2 = (pl.x - kw[1]) * (pl.x - kw[1]) + (pl.y - kw[2]) * (pl.y - kw[2]); if (d2 < bd2) { bd2 = d2; best = kw; } }
+      if (best && day < 0.3) { TW.koliTorch.position.set(best[1], elevAt(best[1], best[2]) + 6, best[2]); TW.koliTorch.intensity = 1.15 * (1 - day * 3); }
+      else TW.koliTorch.intensity = 0;
+    }
     updateEntities();
     // rain follows camera
     if (TW.rain) {

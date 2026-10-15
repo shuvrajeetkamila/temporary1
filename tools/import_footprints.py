@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 """Real building-footprint importer.
 
-Drop OSM XML exports (any area — export from openstreetmap.org or Overpass
-with buildings) into assets_src/footprints/*.osm, then run this. It produces
-game/data/buildings_real.js which the 3D engine renders as extruded real
-footprints (heights from building:levels / building:height / class priors).
+Sources (auto-detected by extension):
+  .osm      OSM XML exports (openstreetmap.org / Overpass with buildings)
+  .geojson  GeoJSON FeatureCollection of building polygons (e.g. Mumbai SRA 2017)
 
-Usage: python3 tools/import_footprints.py "Area Name" file1.osm [file2.osm ...]
+Options:
+  --hashh LO HI   when a source carries no heights: deterministic per-building
+                  height in [LO,HI] metres (SRA rehab walk-ups: use 12 21)
+  --cluster n1:x,y;n2:x,y;...   split buildings into named locality areas by
+                  nearest anchor (world metres) so the engine streams them
+                  per-neighbourhood instead of as one city-wide lump
+
+Output: game/data/buildings_real.js
+  const BUILDINGS3D={credit, areas:[{name,bb,bldgs:[{h,p:[x,y,...]}]}]}
+The 3D engine renders each area as extruded real footprints (streamed).
+
+Usage:
+  python3 tools/import_footprints.py "Area Name" file1.osm [file2 ...]
 """
 import json, math, os, sys
 import xml.etree.ElementTree as ET
@@ -24,19 +35,59 @@ HEIGHT_PRIOR = {  # meters, by building class (Indian context)
     "train_station": 15, "transportation": 10, "public": 15, "civic": 15,
     "government": 18, "kiosk": 3, "roof": 4, "service": 4, "yes": 9,
 }
+CREDIT = ("real footprints: OSM (ODbL) / Mumbai SRA 2017 (jkkersey, CC-BY); "
+          "heights tagged or class/hash-prior, importer tools/import_footprints.py")
 
 
 def x_m(lat, lon):
     return round((lon - ANCHOR_LO) * MLAT), round((lat - ANCHOR_LA) * MLON)
 
 
-def parse(path):
+def _height(tags, hashh, seedx, seedy):
+    bh = tags.get("height")
+    if bh:
+        try: return round(min(float(bh.replace("m", "").strip()), 320), 1)
+        except ValueError: pass
+    if tags.get("building:levels"):
+        try: return round(min(float(tags["building:levels"]) * 3.3, 320), 1)
+        except ValueError: pass
+    if hashh:
+        lo, hi = hashh
+        hsh = (seedx * 73856093) ^ (seedy * 19349663)
+        hsh = (hsh ^ (hsh >> 13)) & 0x7FFFFFFF
+        return round(lo + (hsh % 1000) / 1000.0 * (hi - lo), 1)
+    return round(HEIGHT_PRIOR.get(tags.get("building", "yes"), 9), 1)
+
+
+def parse(path, hashh):
+    bldgs = []
+    if path.endswith(".geojson"):
+        d = json.load(open(path, encoding="utf-8"))
+        for f in d.get("features", []):
+            g = f.get("geometry", {})
+            if g.get("type") != "Polygon" or not g.get("coordinates"):
+                continue
+            ring = g["coordinates"][0]
+            if len(ring) < 3:
+                continue
+            pts = [x_m(r[1], r[0]) for r in ring]
+            if pts[0] == pts[-1]:
+                pts = pts[:-1]
+            if len(pts) < 3:
+                continue
+            cx = sum(p[0] for p in pts) // len(pts)
+            cy = sum(p[1] for p in pts) // len(pts)
+            h = _height({}, hashh, cx, cy)
+            flat = []
+            for (x, y) in pts:
+                flat += [x, y]
+            bldgs.append({"h": h, "p": flat})
+        return bldgs
     tree = ET.parse(path)
     root = tree.getroot()
     nodes = {}
     for n in root.iter("node"):
         nodes[int(n.get("id"))] = x_m(float(n.get("lat")), float(n.get("lon")))
-    out = []
     for w in root.iter("way"):
         tags = {t.get("k"): t.get("v") for t in w.findall("tag")}
         if "building" not in tags and "building:part" not in tags:
@@ -45,54 +96,78 @@ def parse(path):
         pts = [nodes[r] for r in refs if r in nodes]
         if len(pts) < 3:
             continue
-        # close ring
         if pts[0] != pts[-1]:
             pts.append(pts[0])
-        h = None
-        bh = tags.get("height")
-        if bh:
-            try: h = float(bh.replace("m", "").strip())
-            except ValueError: h = None
-        if h is None and tags.get("building:levels"):
-            try: h = float(tags["building:levels"]) * 3.3
-            except ValueError: h = None
-        if h is None:
-            h = HEIGHT_PRIOR.get(tags.get("building", "yes"), 9)
+        h = _height(tags, hashh, pts[0][0], pts[0][1])
         flat = []
         for (x, y) in pts[:-1]:
             flat += [x, y]
-        out.append({"h": round(min(h, 320), 1), "p": flat})
-    return out
+        bldgs.append({"h": h, "p": flat})
+    return bldgs
 
 
 def main():
-    if len(sys.argv) < 3:
+    argv = sys.argv[1:]
+    hashh, cluster, rest = None, None, []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--hashh" and i + 2 < len(argv):
+            hashh = (float(argv[i + 1]), float(argv[i + 2])); i += 3
+        elif argv[i] == "--cluster" and i + 1 < len(argv):
+            cluster = []
+            for part in argv[i + 1].split(";"):
+                nm, xy = part.rsplit(":", 1)
+                x, y = xy.split(",")
+                cluster.append((nm.strip(), int(x), int(y)))
+            i += 2
+        else:
+            rest.append(argv[i]); i += 1
+    if len(rest) < 2:
         print(__doc__); sys.exit(1)
-    name = sys.argv[1]
+    name = rest[0]
     bldgs = []
-    xs, ys = [], []
-    for f in sys.argv[2:]:
-        got = parse(f)
+    for f in rest[1:]:
+        got = parse(f, hashh)
         bldgs += got
-        for b in got:
-            xs += b["p"][0::2]; ys += b["p"][1::2]
         print(f"  {f}: {len(got)} buildings")
     if not bldgs:
         print("no buildings found"); sys.exit(1)
-    data = {"name": name, "bb": [min(xs), min(ys), max(xs), max(ys)], "bldgs": bldgs}
+
+    def centroid(b):
+        return sum(b["p"][0::2]) / (len(b["p"]) // 2), sum(b["p"][1::2]) / (len(b["p"]) // 2)
+
+    areas = []
+    if cluster:
+        groups = {}
+        for b in bldgs:
+            cx, cy = centroid(b)
+            nm = min(cluster, key=lambda c: (c[1] - cx) ** 2 + (c[2] - cy) ** 2)[0]
+            groups.setdefault(nm, []).append(b)
+        for nm, g in sorted(groups.items()):
+            xs = [v for b in g for v in b["p"][0::2]]
+            ys = [v for b in g for v in b["p"][1::2]]
+            areas.append({"name": f"{nm} · {name}", "bb": [round(min(xs)), round(min(ys)), round(max(xs)), round(max(ys))], "bldgs": g})
+            print(f"  {nm} · {name}: {len(g)} buildings")
+    else:
+        xs = [v for b in bldgs for v in b["p"][0::2]]
+        ys = [v for b in bldgs for v in b["p"][1::2]]
+        areas.append({"name": name, "bb": [round(min(xs)), round(min(ys)), round(max(xs)), round(max(ys))], "bldgs": bldgs})
+
     out = "game/data/buildings_real.js"
-    existing = {"areas": []}
+    existing = {"credit": CREDIT, "areas": []}
     if os.path.exists(out):
         try:
             s = open(out, encoding="utf-8").read()
             existing = json.loads(s[s.index("{"): s.rindex("}") + 1])
+            existing.setdefault("credit", CREDIT)
         except Exception:
             pass
-    existing["areas"] = [a for a in existing.get("areas", []) if a["name"] != name]
-    existing["areas"].append(data)
+    newnames = {a["name"] for a in areas}
+    existing["areas"] = [a for a in existing.get("areas", []) if a["name"] not in newnames] + areas
     js = "const BUILDINGS3D=" + json.dumps(existing, separators=(",", ":")) + ";\n"
     open(out, "w", encoding="utf-8").write(js)
-    print(f"{name}: {len(bldgs)} buildings, bbox {data['bb']} -> {out} ({len(js)/1024:.0f} KB)")
+    tot = sum(len(a["bldgs"]) for a in existing["areas"])
+    print(f"{name}: +{len(areas)} area(s), {tot} real buildings total -> {out} ({len(js)/1024:.0f} KB)")
 
 
 if __name__ == "__main__":
