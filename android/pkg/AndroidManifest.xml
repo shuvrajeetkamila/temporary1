@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.arena.islandrealm"
+<<<<<<< HEAD
     android:versionCode="14"
     android:versionName="3.0">
+=======
+    android:versionCode="15"
+    android:versionName="3.1">
+>>>>>>> 242ea43 (v3.1: fix boot crash — rAF called with the loop STATE object instead of the frame function)
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="29" />
     <application
         android:label="@string/app_name"

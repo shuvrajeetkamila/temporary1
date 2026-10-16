@@ -32,7 +32,11 @@ function makeEl(id) {
 const els = {};
 const windowObj = {
   innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1,
+<<<<<<< HEAD
   addEventListener() {}, requestAnimationFrame: fn => setTimeout(() => fn(performance.now()), 1),
+=======
+  addEventListener() {}, requestAnimationFrame: fn => { if (typeof fn !== "function") throw new TypeError("rAF non-function: " + typeof fn); setTimeout(() => fn(performance.now()), 1); },
+>>>>>>> 242ea43 (v3.1: fix boot crash — rAF called with the loop STATE object instead of the frame function)
   performance, setTimeout, clearTimeout,
 };
 const documentObj = {
