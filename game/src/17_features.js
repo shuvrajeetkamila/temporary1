@@ -86,7 +86,13 @@
         const t = M.act.stops[M.act.prog];
         if (t && d2(t) < 120 * 120) { M.act.prog++; G.emit("toast", "📍 Stop " + M.act.prog + "/3 done"); if (M.act.prog >= 3) M.complete(); }
       } else if (M.act.kind === "photo") {
-        if (d2(M.act.to) < 150 * 150) { M._photoReady = M.act.to; G.emit("toast", "📷 Open 📖 → Take a postcard here to finish the job"); }
+        if (d2(M.act.to) < 150 * 150) {
+          const ph = (G.store.get("photos", []) || []).length;
+          if (M._ph0 === undefined) M._ph0 = ph;
+          if (ph > M._ph0) { M._ph0 = undefined; M.complete(); }
+          else if (!M._photoReady) G.emit("toast", "📷 You're there — take a postcard to finish the job");
+          M._photoReady = true;
+        }
       } else {
         const tgt = M.act.stage === 0 ? M.act.from : M.act.to;
         if (d2(tgt) < 120 * 120) {
@@ -101,10 +107,9 @@
       if (OWN.fuel > 0) OWN.fuel = Math.max(0, OWN.fuel - dt * (0.00022 + 0.00002 * T.vmax) * Math.min(1, (P.v || 0) / 6));
       if (OWN.fuel <= 0 && (P.v || 0) > 2) { P.v *= (1 - Math.min(0.9, dt * 1.6)); if (Math.random() < dt * 0.2) G.emit("toast", "⛽ Out of fuel! Open 🚗 Garage → Refuel"); }
     }
-    // speeding challans inside named districts
-    if (!HEADLESS) {
+    // speeding challans — motor traffic only
+    if (!HEADLESS && T && T.road) {
       const lim = 26;
-      if (!T || T.road || false) { }
       if ((P.v || 0) > lim * 1.45) {
         M._sp = (M._sp || 0) + dt;
         if (M._sp > 6) {
@@ -117,6 +122,18 @@
   };
   IV(() => { if (!HEADLESS) M.update(0.5); }, 500);
 
+  // enforce garage ownership in the vehicle menu
+  if (!HEADLESS && typeof G.spawnVehicle === "function") {
+    const rawSpawn = G.spawnVehicle;
+    G.spawnVehicle = function (type) {
+      if (S.own && type !== "foot" && !OWN.owned.includes(type)) {
+        G.emit("toast", "🔒 You don't own the " + ((G.VEHTYPES[type] || {}).n || type) + " — buy it in the Garage 🚗 (missions pay!)");
+        return;
+      }
+      return rawSpawn(type);
+    };
+  }
+
   // ---------------- P3: achievements ----------------
   const ACH = G.ACH = { got: G.store.get("ach", {}) };
   function ach(id, name, desc, need, have) {
@@ -126,7 +143,7 @@
     }
   }
   ACH.update = () => {
-    const disc = (G.store.get("disc", []) || []).length;
+    const disc = ((G.store.get("visited", []) || [])).length;
     const ph = (G.store.get("photos", []) || []).length;
     ach("explorer", "City Explorer", "Discover 25 places", 25, disc);
     ach("chronicler", "Chronicler of Mumbai", "Own 5 postcards", 5, ph);
@@ -135,6 +152,12 @@
     ach("boroughs", "Knows the Boroughs", "Visit 8 districts", 8, dists);
   };
   IV(() => { if (!HEADLESS) ACH.update(); }, 4000);
+  IV(() => { // rides keep moving even when the 3D view is closed
+    if (HEADLESS || !RIDE.on) return;
+    if (!(G.TW && G.TW.active && G.TW.ready)) RIDE.update(0.25);
+    const hand = document.getElementById("bHand");
+    if (hand) hand.style.display = RIDE.on ? "block" : "none";
+  }, 250);
 
   // ---------------- P2: districts ----------------
   const DISTRICTS = G.DISTRICTS = [
@@ -163,45 +186,87 @@
   // ---------------- P4: metro hop rides + scenic flight ----------------
   const RIDE = G.RIDE = { on: null };
   function metroLines() { return (G.W.rails || []).filter(r => r.kind === "metro"); }
-  function nearestMetroStop() {
-    let best = null, bd = 1e18;
-    for (const r of metroLines()) for (const st of r.st) {
+  function allRideableLines() { return (G.W.rails || []).filter(r => r.pts && r.pts.length > 2); }
+  function nearestStop(lines, maxD) {
+    let best = null, bd = maxD * maxD;
+    for (const r of lines) for (const st of (r.st || [])) {
       const d = (G.PL.x - st.x) * (G.PL.x - st.x) + (G.PL.y - st.y) * (G.PL.y - st.y);
       if (d < bd) { bd = d; best = { st, r, d }; }
     }
-    return bd < 400 * 400 ? best : null;
+    return best;
+  }
+  function nearestMetroStop() { return nearestStop(metroLines(), 400); }
+  function nearestRailStop() { return nearestStop(allRideableLines(), 400); }
+  function boardLine(r, hopM, label) {
+    const pts = r.pts;
+    let bi = 0, bd = 1e18;
+    for (let i = 0; i < pts.length; i++) { const d = (G.PL.x - pts[i][0]) ** 2 + (G.PL.y - pts[i][1]) ** 2; if (d < bd) { bd = d; bi = i; } }
+    let dist = 0, ei = bi;
+    while (ei < pts.length - 1 && dist < hopM) { dist += Math.hypot(pts[ei + 1][0] - pts[ei][0], pts[ei + 1][1] - pts[ei][1]); ei++; }
+    if (dist < 100) {
+      ei = bi; dist = 0;
+      while (ei > 0 && dist < hopM) { dist += Math.hypot(pts[ei - 1][0] - pts[ei][0], pts[ei - 1][1] - pts[ei][1]); ei--; }
+      RIDE.on = { kind: "metro", pts, i: bi, end: ei, t: 0, name: label, back: true };
+      G.emit("toast", label + " — riding " + Math.round(dist) + " m. Tap ✋ to alight.");
+      return;
+    }
+    RIDE.on = { kind: "metro", pts, i: bi, end: ei, t: 0, name: label };
+    G.emit("toast", label + " — riding " + Math.round(dist) + " m. Tap ✋ to alight.");
   }
   RIDE.metro = () => {
     const near = nearestMetroStop();
     if (!near) { G.emit("toast", "🚇 No metro station within 400 m"); return; }
-    const r = near.r, pts = r.pts;
-    // find nearest point index on the line, then ride forward ~1400 m along it
-    let bi = 0, bd = 1e18;
-    for (let i = 0; i < pts.length; i++) { const d = (G.PL.x - pts[i][0]) ** 2 + (G.PL.y - pts[i][1]) ** 2; if (d < bd) { bd = d; bi = i; } }
-    let dist = 0, ei = bi;
-    while (ei < pts.length - 1 && dist < 1400) { dist += Math.hypot(pts[ei + 1][0] - pts[ei][0], pts[ei + 1][1] - pts[ei][1]); ei++; }
-    RIDE.on = { kind: "metro", pts, i: bi, end: ei, t: 0, name: r.name || "Metro" };
-    G.emit("toast", "🚇 " + RIDE.on.name + " — riding " + Math.round(dist) + " m. Tap ✋ to alight.");
+    boardLine(near.r, 1400, "🚇 " + (near.r.name || "Metro"));
+  };
+  RIDE.train = () => {
+    const near = nearestRailStop();
+    if (!near) { G.emit("toast", "🚆 No railway station within 400 m"); return; }
+    boardLine(near.r, 2600, "🚆 " + (near.r.name || "Local"));
   };
   const FLIGHT_WPS = [[-3620, -9180], [-9500, -13200], [-12300, -17000], [-13100, -1300], [-9835, -5971], [-5900, 1200]];
+  const FERRY_PTS = [[-12550, -18900], [-14300, -19700], [-16100, -20600], [-17500, -21500]];
+  RIDE.ferry = () => {
+    const dGw = Math.hypot(G.PL.x - FERRY_PTS[0][0], G.PL.y - FERRY_PTS[0][1]);
+    if (dGw > 900 && !G.TERRAIN.waterAt(G.PL.x, G.PL.y, 1.5)) { G.emit("toast", "⛴️ The ferry sails from Gateway Harbour (or jump in anywhere on water)"); return; }
+    const pts = FERRY_PTS;
+    let bi = 0, bd = 1e18;
+    for (let i = 0; i < pts.length; i++) { const d = (G.PL.x - pts[i][0]) ** 2 + (G.PL.y - pts[i][1]) ** 2; if (d < bd) { bd = d; bi = i; } }
+    RIDE.on = { kind: "ferry", pts, i: bi, end: pts.length - 1, t: 0, name: "⛴️ Harbour ferry", back: bi === pts.length - 1 };
+    if (!G.PL._rideMode) G.PL._rideMode = G.PL.mode;
+    G.PL.mode = "boat"; G.PL.alt = 0;
+    G.emit("toast", "⛴️ Harbour ferry — Gateway ⇄ across the harbour. Tap ✋ to disembark.");
+  };
   RIDE.flight = () => {
     RIDE.on = { kind: "flight", wps: FLIGHT_WPS, i: 0, alt: 260, name: "Coastal flight" };
+    if (!G.PL._rideMode) G.PL._rideMode = G.PL.mode;
+    G.PL.mode = "heli"; G.PL.v = 0;
     G.emit("toast", "✈️ Scenic coastal flight — CSMIA → Marine Drive → Gateway → Juhu. Tap ✋ to skip.");
   };
-  RIDE.alight = () => { if (RIDE.on) { RIDE.on = null; G.emit("toast", "🚏 You stepped off."); } };
+  RIDE.alight = () => {
+    if (!RIDE.on) return;
+    RIDE.on = null;
+    if (G.PL._rideMode) { G.PL.mode = G.PL._rideMode; G.PL._rideMode = null; }
+    G.PL.alt = 0; G.PL.v = 0; G.PL.grounded = true;
+    G.emit("toast", "🚏 You stepped off.");
+  };
   RIDE.update = (dt) => {
     if (!RIDE.on) return;
     const P = G.PL, sp = RIDE.on.kind === "flight" ? 46 : 15;
-    if (RIDE.on.kind === "metro") {
-      const pts = RIDE.on.pts;
+    if (RIDE.on.kind === "metro" || RIDE.on.kind === "ferry") {
+      const pts = RIDE.on.pts, back = RIDE.on.back;
+      const step = () => back ? (RIDE.on.i > 0 ? (RIDE.on.i--, true) : false) : (RIDE.on.i < pts.length - 2 ? (RIDE.on.i++, true) : false);
       let seg = Math.hypot(pts[RIDE.on.i + 1][0] - pts[RIDE.on.i][0], pts[RIDE.on.i + 1][1] - pts[RIDE.on.i][1]) || 1;
-      RIDE.on.t += sp * dt / seg; 
-      while (RIDE.on.t >= 1 && RIDE.on.i < RIDE.on.end) { RIDE.on.t -= 1; RIDE.on.i++; seg = Math.hypot(pts[RIDE.on.i + 1][0] - pts[RIDE.on.i][0], pts[RIDE.on.i + 1][1] - pts[RIDE.on.i][1]) || 1; RIDE.on.t += 0; }
+      RIDE.on.t += sp * dt / seg;
+      let guard = 0;
+      while (RIDE.on.t >= 1 && RIDE.on.i !== RIDE.on.end && guard++ < 100) { RIDE.on.t -= 1; step(); seg = Math.hypot(pts[RIDE.on.i + 1][0] - pts[RIDE.on.i][0], pts[RIDE.on.i + 1][1] - pts[RIDE.on.i][1]) || 1; }
       const i = Math.min(RIDE.on.i, pts.length - 2);
       P.x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * RIDE.on.t;
       P.y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * RIDE.on.t;
       P.heading = Math.atan2(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
-      if (RIDE.on.i >= RIDE.on.end) { RIDE.alight(); G.emit("toast", "🚇 Arrived — platform please mind the gap"); }
+      if (RIDE.on.i === RIDE.on.end) {
+        const nm = RIDE.on.name; RIDE.alight();
+        G.emit("toast", nm + " — arrived. Mind the gap.");
+      }
     } else {
       const wp = RIDE.on.wps[RIDE.on.i];
       const d = Math.hypot(wp[0] - P.x, wp[1] - P.y);
@@ -239,12 +304,16 @@
       else h += M.offers.map((o, i) => `<div class="mrow"><div style="flex:1;font-size:12px">${o.name}</div><b style="color:#8fd">₹${o.pay}</b><button class="fbtn" data-mi="${i}" style="width:34px">✔</button></div>`).join("");
       h += `<p style="opacity:.6;font-size:11px">Done: ${M.done} · New offers each time you open the board.</p>
             ${nearestMetroStop() ? `<button class="fbtn" id="mMetro" style="width:100%">🚇 Board Metro (nearby station)</button>` : ""}
+            ${nearestRailStop() ? `<button class="fbtn" id="mTrain" style="width:100%">🚆 Ride a Local (nearby station)</button>` : ""}
+            <button class="fbtn" id="mFerry" style="width:100%">⛴️ Harbour ferry (Gateway ⇄ across)</button>
             <button class="fbtn" id="mFlight" style="width:100%">✈️ Scenic coastal flight (from CSMIA)</button>
             <button class="fbtn" id="mClose" style="width:100%">Close</button>`;
       P(h);
       document.querySelectorAll("[data-mi]").forEach(b => b.onclick = () => { M.accept(+b.dataset.mi); closeP(); });
       const ab = q("mAb"); if (ab) ab.onclick = () => { M.abandon(); closeP(); };
       const mm = q("mMetro"); if (mm) mm.onclick = () => { RIDE.metro(); closeP(); };
+      const mt = q("mTrain"); if (mt) mt.onclick = () => { RIDE.train(); closeP(); };
+      q("mFerry").onclick = () => { RIDE.ferry(); closeP(); };
       q("mFlight").onclick = () => { RIDE.flight(); closeP(); };
       q("mClose").onclick = closeP;
       const hand = q("bHand"); hand.style.display = RIDE.on ? "block" : "none";

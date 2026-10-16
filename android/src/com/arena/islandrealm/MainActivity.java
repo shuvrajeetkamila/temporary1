@@ -30,7 +30,7 @@ public class MainActivity extends Activity {
     view = new BootView(this);
     setContentView(view);
     say("ISLAND REALM — Mumbai / Navi Mumbai");
-    say("BUILD 4.0 — Phases 1-5");
+    say("BUILD 4.1 — fixed + trains/ferry");
     say("Android " + android.os.Build.VERSION.RELEASE + " (SDK " + android.os.Build.VERSION.SDK_INT + ") " + android.os.Build.MODEL);
     try {
       java.io.InputStream in = getAssets().open("index.html");
