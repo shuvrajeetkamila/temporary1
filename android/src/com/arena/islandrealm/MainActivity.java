@@ -30,11 +30,7 @@ public class MainActivity extends Activity {
     view = new BootView(this);
     setContentView(view);
     say("ISLAND REALM — Mumbai / Navi Mumbai");
-<<<<<<< HEAD
-    say("BUILD 3.0 — real-toolchain APK");
-=======
     say("BUILD 3.1 — rAF fix");
->>>>>>> 242ea43 (v3.1: fix boot crash — rAF called with the loop STATE object instead of the frame function)
     say("Android " + android.os.Build.VERSION.RELEASE + " (SDK " + android.os.Build.VERSION.SDK_INT + ") " + android.os.Build.MODEL);
     try {
       java.io.InputStream in = getAssets().open("index.html");

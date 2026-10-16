@@ -138,11 +138,7 @@ def main():
     print("[5/5] validation")
     r = subprocess.run([AAPT2, "dump", "badging", OUT], capture_output=True, text=True)
     bad = r.stdout.splitlines()
-<<<<<<< HEAD
-    assert any("package: name='com.arena.islandrealm'" in l and "versionCode='14'" in l for l in bad), "aapt2 badging: package line missing"
-=======
     assert any("package: name='com.arena.islandrealm'" in l and "versionCode='15'" in l for l in bad), "aapt2 badging: package line missing"
->>>>>>> 242ea43 (v3.1: fix boot crash — rAF called with the loop STATE object instead of the frame function)
     assert any("application-label:" in l for l in bad), "aapt2 badging: label missing"
     assert any("launchable-activity" in l for l in bad), "aapt2 badging: launchable activity missing"
     print("   aapt2 badging (REAL parser): OK")
@@ -192,11 +188,7 @@ def main():
     from pyaxmlparser import APK
     apk = APK(OUT)
     print("   pyaxmlparser:", apk.package, apk.version_code, apk.version_name)
-<<<<<<< HEAD
-    assert apk.package == "com.arena.islandrealm" and str(apk.version_name) == "3.0"
-=======
     assert apk.package == "com.arena.islandrealm" and str(apk.version_name) == "3.1"
->>>>>>> 242ea43 (v3.1: fix boot crash — rAF called with the loop STATE object instead of the frame function)
     print()
     print("APK BUILD COMPLETE (REAL TOOLCHAIN):", OUT, os.path.getsize(OUT), "bytes")
 

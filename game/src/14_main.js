@@ -37,11 +37,7 @@
     }
     G.emit("toast", "Loaded at " + (G.POI.nearest(G.PL.x, G.PL.y, 1500) || { name: "the realm" }).name);
     loop.last = performance.now();
-<<<<<<< HEAD
-    requestAnimationFrame(loop);
-=======
     requestAnimationFrame(frame);
->>>>>>> 242ea43 (v3.1: fix boot crash — rAF called with the loop STATE object instead of the frame function)
   }
 
   // entity layers registered into the world render
