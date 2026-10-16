@@ -89,7 +89,7 @@
   };
 
   // ---------- vehicle menu ----------
-  const VEH_ORDER = ["foot", "car", "taxi", "auto", "bike", "truck", "boat", "speed", "plane", "heli"];
+  const VEH_ORDER = ["foot", "car", "taxi", "auto", "bike", "truck", "bus", "boat", "speed", "plane", "heli"];
   UI.openVeh = () => {
     const g = $("vehGrid"); g.innerHTML = "";
     for (const id of VEH_ORDER) {

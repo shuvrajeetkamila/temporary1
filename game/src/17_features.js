@@ -12,6 +12,20 @@
   if (!G || !G.POI) return;
   const S = G.SET = Object.assign({ quality: 1, sound: 1, labels: 1, own: 1, slot: "A" }, G.store.get("settings", {}));
   const saveS = () => G.store.set("settings", S);
+  if (S.lang === undefined) S.lang = "en";
+  const L10N = {
+    en: { district: "🏙️ @d", accept: "📋 Accepted — @n", done: "✅ @n — earned ₹@p (total ₹@t)", bye: "📋 Mission abandoned",
+      fuel: "⛽ Filled at @n — ₹@c", challan: "🚨 Traffic challan: ₹200 (speeding in city limits)", board: "🚏 Riding. Tap ✋ to alight.", off: "🚏 You stepped off.", crash: "💥 Crash! Get repairs (🚗 Garage)" },
+    hi: { district: "🏙️ @d", accept: "📋 स्वीकार — @n", done: "✅ @n — ₹@p मिले (कुल ₹@t)", bye: "📋 मिशन छोड़ा",
+      fuel: "⛽ टंकी भरी @n — ₹@c", challan: "🚨 ट्रैफ़िक जुर्माना: ₹200 (ओवरस्पीड)", board: "🚏 सवारी चालू। ✋ से उतरें।", off: "🚏 आप उतर गए।", crash: "💥 टक्कर! मरम्मत कराएं (🚗 गैराज)" },
+    mr: { district: "🏙️ @d", accept: "📋 स्वीकार — @n", done: "✅ @n — ₹@p मिळाले (एकूण ₹@t)", bye: "📋 मिशन सोडलं",
+      fuel: "⛽ टाकी भरली @n — ₹@c", challan: "🚨 ट्रॅफिक दंड: ₹200 (वेगाची मर्यादा ओलांडली)", board: "🚏 स्वारी सुरू. ✋ ने उतरा.", off: "🚏 तुम्ही उतरलात.", crash: "💥 धडक! दुरुस्ती करा (🚗 गॅरेज)" }
+  };
+  G.T = (key, vars) => {
+    let t = (L10N[S.lang] && L10N[S.lang][key]) || L10N.en[key] || key;
+    if (vars) for (const k of Object.keys(vars)) t = t.replace("@" + k, vars[k]);
+    return t;
+  };
   const DOM = (typeof document !== "undefined") && !!document.body && !!document.createElement && !!document.head && !!document.getElementById("toasts");
   const HEADLESS = !DOM;
 
@@ -47,9 +61,26 @@
   const M = G.MISSIONS = { act: null, done: G.store.get("missionsDone", 0), offers: [] };
   const OWN = G.GARAGE = { owned: G.store.get("owned", ["foot"]), fuel: G.store.get("fuel", 1) };
   const PRICES = {
-    auto: 40000, bike: 30000, taxi: 60000, car: 80000, truck: 120000,
+    auto: 40000, bike: 30000, taxi: 60000, car: 80000, truck: 120000, bus: 60000,
     boat: 90000, speed: 150000, plane: 800000, heli: 1200000
   };
+  G.fuelPrice = () => 1.5 + ((Math.floor(Date.now() / 86400e3) * 7) % 11) / 11 * 1.6;
+  G.FUELSTATIONS = [
+    { n: "Colaba Pump", x: -12800, y: -19100 }, { n: "Fort Pump", x: -12300, y: -17000 },
+    { n: "Worli Pump", x: -13700, y: -9900 }, { n: "Dadar Pump", x: -11050, y: -8950 },
+    { n: "Bandra Pump", x: -12200, y: -4500 }, { n: "Andheri Pump", x: -10630, y: 2300 },
+    { n: "Borivali Pump", x: -9900, y: 12060 }, { n: "Powai Pump", x: -4530, y: 1980 },
+    { n: "Vashi Pump", x: 950, y: -4900 }, { n: "Thane Pump", x: -110, y: 9850 }
+  ];
+  const SEALINK_GATES = [
+    { x: -13600, y: -7930, open: 0, last: 0, side: "Bandra" },
+    { x: -13860, y: -11320, open: 0, last: 0, side: "Worli" }
+  ];
+  const MD_FIREWORKS = [[-14930, -17360], [-14500, -17800], [-14100, -17000]];
+  const GANPATI_ROUTE = [[-11400, -12500], [-11700, -9800], [-11900, -7300]];
+  function realDate() { const d = new Date(); return { mo: d.getMonth() + 1, d: d.getDate() }; }
+  function isGanpati() { const r = realDate(); return (r.mo === 8 && r.d >= 20) || (r.mo === 9 && r.d <= 10); }
+  function isFireworks() { const r = realDate(); return (r.mo === 1 && r.d === 1) || (r.mo === 10 && r.d >= 18 && r.d <= 24) || (r.mo === 11 && r.d <= 5); }
   function rnd(a, b) { return Math.round(a + Math.random() * (b - a)); }
   function pickPOI(nearX, nearY, minD, maxD) {
     const cands = G.POI.all.filter(p => { const d = Math.hypot(p.x - nearX, p.y - nearY); return d > minD && d < maxD; });
@@ -70,21 +101,57 @@
     return { kind: "photo", name: "📷 Photograph " + b.name, pay: rnd(400, 800), to: b };
   }
   M.refresh = () => { M.offers = []; for (let i = 0; i < 4; i++) { const o = genOffer(); if (o) M.offers.push(o); } };
-  M.accept = (i) => { if (!M.act && M.offers[i]) { M.act = M.offers[i]; G.emit("toast", "📋 Accepted — " + M.act.name); } };
+  const poiByName = (n) => G.POI.all.find(p => p.n === n || p.name === n);
+  G.STORIES = [
+    { name: "1911 — The Gateway Rises", pay: 3000, steps: [
+      ["Colaba", "1911: King George V lands on this shore. A basalt arch will rise here."],
+      ["Fort", "The troops march past the Fort; the city gathers in its Sunday best."],
+      ["Churchgate", "By 1924 the Gateway is done — the harbour door of the Empire."]] },
+    { name: "The Dabbawalas of Girangaon", pay: 2600, steps: [
+      ["Parel", "Mill country. Lunchboxes move by train, bicycle and head-load."],
+      ["Dadar", "A coded tile on the lid — suburb to Fort without a wrong drop in a century."],
+      ["Churchgate", "120,000 tiffins a day. Six Sigma, Mumbai style."]] },
+    { name: "Salt, Mills and Seven Islands", pay: 3400, steps: [
+      ["Mahim", "The seven islands were woven together by causeways and faith."],
+      ["Worli", "Bandra still watches from across the water — one day a bridge will jump it."],
+      ["Cotton Green", "Raw cotton by the wagon-load; the mills breathe and the city grows."]] }
+  ];
+  M.startStory = (si) => {
+    const st = G.STORIES[si];
+    const stops = [];
+    for (const [nm, blurb] of st.steps) {
+      const p = poiByName(nm);
+      if (p) stops.push({ x: p.x, y: p.y, name: nm, blurb });
+    }
+    if (stops.length < 2) { G.emit("toast", "Story unavailable in this save"); return; }
+    M.act = { kind: "tour", story: st.name, name: "⭐ " + st.name, pay: st.pay, stops, prog: 0 };
+    G.emit("toast", "⭐ " + st.name + " — go to " + stops[0].name);
+  };
+  M.accept = (i) => { if (!M.act && M.offers[i]) { M.act = M.offers[i]; G.emit("toast", G.T("accept", { n: M.act.name })); } };
   M.complete = () => {
     const E = G.ECON; E.money += M.act.pay; G.store.set("money", E.money);
     M.done++; G.store.set("missionsDone", M.done);
-    G.emit("toast", "✅ " + M.act.name + " — earned ₹" + M.act.pay + " (total ₹" + E.money + ")");
-    M.act = null; ach("worker", "Working for the city", "Complete 5 missions", 5, M.done);
+    G.emit("toast", G.T("done", { n: M.act.name, p: M.act.pay, t: E.money }));
+    if (G.DAILY) G.DAILY.progress("earn", M.act.pay);
+    if (G.DAILY) G.DAILY.progress("missions", 1);
+    const story = M.act.story; M.act = null;
+    ach("worker1", "Working for the city", "Complete 5 missions", 5, M.done);
+    ach("worker2", "Backbone of the economy", "Complete 15 missions", 15, M.done);
+    ach("worker3", "Mumbai's own", "Complete 40 missions", 40, M.done);
   };
-  M.abandon = () => { if (M.act) { G.emit("toast", "📋 Mission abandoned"); M.act = null; } };
+  M.abandon = () => { if (M.act) { G.emit("toast", G.T("bye")); M.act = null; } };
   M.update = (dt) => {
     const P = G.PL;
     if (M.act) {
       const d2 = (p) => (P.x - p.x) * (P.x - p.x) + (P.y - p.y) * (P.y - p.y);
       if (M.act.kind === "tour") {
         const t = M.act.stops[M.act.prog];
-        if (t && d2(t) < 120 * 120) { M.act.prog++; G.emit("toast", "📍 Stop " + M.act.prog + "/3 done"); if (M.act.prog >= 3) M.complete(); }
+        if (t && d2(t) < 120 * 120) {
+          M.act.prog++;
+          if (t.blurb) G.emit("toast", "📖 " + t.blurb);
+          else G.emit("toast", "📍 Stop " + M.act.prog + "/" + M.act.stops.length + " done");
+          if (M.act.prog >= M.act.stops.length) M.complete();
+        }
       } else if (M.act.kind === "photo") {
         if (d2(M.act.to) < 150 * 150) {
           const ph = (G.store.get("photos", []) || []).length;
@@ -103,6 +170,24 @@
     }
     // fuel drain (motorised, road/air/water)
     const T = G.VEHTYPES[P.mode];
+    // real petrol pumps: drive within 55 m -> full serve
+    if (T && !T.rail && P.mode !== "foot" && OWN.fuel < 0.995) {
+      for (const fp of G.FUELSTATIONS) {
+        if (Math.hypot(P.x - fp.x, P.y - fp.y) < 55) {
+          const pr = G.fuelPrice();
+          const cost = Math.ceil((1 - OWN.fuel) * 100 * pr);
+          if (G.ECON.money >= cost) {
+            G.ECON.money -= cost; G.store.set("money", G.ECON.money);
+            OWN.fuel = 1; G.store.set("fuel", 1);
+            G.emit("toast", G.T("fuel", { n: fp.n, c: cost }));
+          } else if (!M._fuelWarn || performance.now() - M._fuelWarn > 30000) {
+            M._fuelWarn = performance.now();
+            G.emit("toast", "⛽ Petrol pump here but you need ₹" + cost + " — missions pay! 🎯");
+          }
+          break;
+        }
+      }
+    }
     if (T && !T.rail && P.mode !== "foot") {
       if (OWN.fuel > 0) OWN.fuel = Math.max(0, OWN.fuel - dt * (0.00022 + 0.00002 * T.vmax) * Math.min(1, (P.v || 0) / 6));
       if (OWN.fuel <= 0 && (P.v || 0) > 2) { P.v *= (1 - Math.min(0.9, dt * 1.6)); if (Math.random() < dt * 0.2) G.emit("toast", "⛽ Out of fuel! Open 🚗 Garage → Refuel"); }
@@ -114,7 +199,7 @@
         M._sp = (M._sp || 0) + dt;
         if (M._sp > 6) {
           M._sp = 0;
-          if (G.ECON.money >= 200) { G.ECON.money -= 200; G.store.set("money", G.ECON.money); G.emit("toast", "🚨 Traffic challan: ₹200 (speeding in city limits)"); }
+          if (G.ECON.money >= 200) { G.ECON.money -= 200; G.store.set("money", G.ECON.money); G.emit("toast", G.T("challan")); }
           else G.emit("toast", "🚨 Slow down! (no money for the challan — they took your photo)");
         }
       } else M._sp = 0;
@@ -134,6 +219,28 @@
     };
   }
 
+  // ---------------- daily challenges (real device date) ----------------
+  const nowD = new Date();
+  const dayKey = nowD.getFullYear() + "-" + (nowD.getMonth() + 1) + "-" + nowD.getDate();
+  const DAILY = G.DAILY = { key: dayKey, prog: G.store.get("daily_" + dayKey, { earn: 0, disc: 0, rides: 0, paid: {} }) };
+  const DDEF = [
+    ["earn", "Earn ₹1,500 from missions", 1500, 700],
+    ["disc", "Discover 3 new places", 3, 500],
+    ["rides", "Take 2 rides (train/metro/ferry/flight)", 2, 600]
+  ];
+  DAILY.goal = (id) => DDEF.find(d => d[0] === id)[2];
+  DAILY.progress = (id, amt) => {
+    DAILY.prog[id] = (DAILY.prog[id] || 0) + amt;
+    G.store.set("daily_" + dayKey, DAILY.prog);
+    const def = DDEF.find(d => d[0] === id);
+    if (def && DAILY.prog[id] >= def[2] && !DAILY.prog.paid[id]) {
+      DAILY.prog.paid[id] = 1; G.store.set("daily_" + dayKey, DAILY.prog);
+      G.ECON.money += def[3]; G.store.set("money", G.ECON.money);
+      G.emit("toast", "📅 Daily done: " + def[1] + " — ₹" + def[3] + " bonus!");
+    }
+  };
+  if (typeof G.on === "function") G.on("discovered", () => DAILY.progress("disc", 1));
+
   // ---------------- P3: achievements ----------------
   const ACH = G.ACH = { got: G.store.get("ach", {}) };
   function ach(id, name, desc, need, have) {
@@ -145,11 +252,17 @@
   ACH.update = () => {
     const disc = ((G.store.get("visited", []) || [])).length;
     const ph = (G.store.get("photos", []) || []).length;
-    ach("explorer", "City Explorer", "Discover 25 places", 25, disc);
-    ach("chronicler", "Chronicler of Mumbai", "Own 5 postcards", 5, ph);
-    ach("rich", "Crorepati-in-training", "Hold ₹1,00,000", 100000, G.ECON.money);
+    ach("explorer1", "Wanderer", "Discover 10 places", 10, disc);
+    ach("explorer2", "City Explorer", "Discover 30 places", 30, disc);
+    ach("explorer3", "The 780", "Discover 70 places", 70, disc);
+    ach("chron1", "Postcard home", "Own 3 postcards", 3, ph);
+    ach("chron2", "Chronicle of Mumbai", "Own 6 postcards", 6, ph);
+    ach("rich1", "First lakh", "Hold ₹1,00,000", 100000, G.ECON.money);
+    ach("rich2", "Serious money", "Hold ₹5,00,000", 500000, G.ECON.money);
     const dists = Object.keys(G.store.get("districts", {})).length;
-    ach("boroughs", "Knows the Boroughs", "Visit 8 districts", 8, dists);
+    ach("boro1", "Neighbourhood hopping", "Visit 5 districts", 5, dists);
+    ach("boro2", "Knows the Boroughs", "Visit 9 districts", 9, dists);
+    ach("boro3", "The whole city", "Visit 14 districts", 14, dists);
   };
   IV(() => { if (!HEADLESS) ACH.update(); }, 4000);
   IV(() => { // rides keep moving even when the 3D view is closed
@@ -210,8 +323,8 @@
       G.emit("toast", label + " — riding " + Math.round(dist) + " m. Tap ✋ to alight.");
       return;
     }
-    RIDE.on = { kind: "metro", pts, i: bi, end: ei, t: 0, name: label };
-    G.emit("toast", label + " — riding " + Math.round(dist) + " m. Tap ✋ to alight.");
+    RIDE.on = { kind: "metro", pts, i: bi, end: ei, t: 0, name: label, line: r, ann: {} };
+    G.emit("toast", G.T("board") + " (" + Math.round(dist) + " m)");
   }
   RIDE.metro = () => {
     const near = nearestMetroStop();
@@ -222,6 +335,18 @@
     const near = nearestRailStop();
     if (!near) { G.emit("toast", "🚆 No railway station within 400 m"); return; }
     boardLine(near.r, 2600, "🚆 " + (near.r.name || "Local"));
+  };
+  RIDE.trainFull = () => {
+    const near = nearestRailStop();
+    if (!near) { G.emit("toast", "🚆 No railway station within 400 m"); return; }
+    boardLine(near.r, 1e9, "🚆 " + (near.r.name || "Local") + " (full line)");
+    RIDE.on.line = near.r; RIDE.on.ann = {};
+  };
+  RIDE.metroFull = () => {
+    const near = nearestMetroStop();
+    if (!near) { G.emit("toast", "🚇 No metro station within 400 m"); return; }
+    boardLine(near.r, 1e9, "🚇 " + (near.r.name || "Metro") + " (full line)");
+    RIDE.on.line = near.r; RIDE.on.ann = {};
   };
   const FLIGHT_WPS = [[-3620, -9180], [-9500, -13200], [-12300, -17000], [-13100, -1300], [-9835, -5971], [-5900, 1200]];
   const FERRY_PTS = [[-12550, -18900], [-14300, -19700], [-16100, -20600], [-17500, -21500]];
@@ -234,7 +359,8 @@
     RIDE.on = { kind: "ferry", pts, i: bi, end: pts.length - 1, t: 0, name: "⛴️ Harbour ferry", back: bi === pts.length - 1 };
     if (!G.PL._rideMode) G.PL._rideMode = G.PL.mode;
     G.PL.mode = "boat"; G.PL.alt = 0;
-    G.emit("toast", "⛴️ Harbour ferry — Gateway ⇄ across the harbour. Tap ✋ to disembark.");
+    const d = G.ENV.date();
+    G.emit("toast", "⛴️ M2 Harbour ferry (Gateway ⇄ Butcher Island) — sailed " + d.h + ":" + (d.mi < 10 ? "0" : "") + d.mi + ". Tap ✋ to disembark.");
   };
   RIDE.flight = () => {
     RIDE.on = { kind: "flight", wps: FLIGHT_WPS, i: 0, alt: 260, name: "Coastal flight" };
@@ -246,6 +372,7 @@
     if (!RIDE.on) return;
     RIDE.on = null;
     if (G.PL._rideMode) { G.PL.mode = G.PL._rideMode; G.PL._rideMode = null; }
+    if (G.DAILY) G.DAILY.progress("rides", 1);
     G.PL.alt = 0; G.PL.v = 0; G.PL.grounded = true;
     G.emit("toast", "🚏 You stepped off.");
   };
@@ -263,6 +390,16 @@
       P.x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * RIDE.on.t;
       P.y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * RIDE.on.t;
       P.heading = Math.atan2(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+      if (RIDE.on.line && RIDE.on.line.st) {
+        for (const st of RIDE.on.line.st) {
+          const dd = Math.hypot(P.x - st.x, P.y - st.y);
+          if (dd < 130 && !RIDE.on.ann[st.x + "," + st.y]) {
+            RIDE.on.ann[st.x + "," + st.y] = 1;
+            const poi = G.POI.nearest(st.x, st.y, 420);
+            G.emit("toast", "🚏 Now approaching: " + (poi ? poi.name : "next station"));
+          }
+        }
+      }
       if (RIDE.on.i === RIDE.on.end) {
         const nm = RIDE.on.name; RIDE.alight();
         G.emit("toast", nm + " — arrived. Mind the gap.");
@@ -304,11 +441,24 @@
       else h += M.offers.map((o, i) => `<div class="mrow"><div style="flex:1;font-size:12px">${o.name}</div><b style="color:#8fd">₹${o.pay}</b><button class="fbtn" data-mi="${i}" style="width:34px">✔</button></div>`).join("");
       h += `<p style="opacity:.6;font-size:11px">Done: ${M.done} · New offers each time you open the board.</p>
             ${nearestMetroStop() ? `<button class="fbtn" id="mMetro" style="width:100%">🚇 Board Metro (nearby station)</button>` : ""}
+            ${nearestMetroStop() ? `<button class="fbtn" id="mMetroF" style="width:100%">🚇 Metro — FULL line ride</button>` : ""}
             ${nearestRailStop() ? `<button class="fbtn" id="mTrain" style="width:100%">🚆 Ride a Local (nearby station)</button>` : ""}
-            <button class="fbtn" id="mFerry" style="width:100%">⛴️ Harbour ferry (Gateway ⇄ across)</button>
+            ${nearestRailStop() ? `<button class="fbtn" id="mTrainF" style="width:100%">🚆 Local — FULL line ride</button>` : ""}
+            <button class="fbtn" id="mFerry" style="width:100%">⛴️ Harbour ferry M2 (Gateway ⇄ Butcher Island)</button>
             <button class="fbtn" id="mFlight" style="width:100%">✈️ Scenic coastal flight (from CSMIA)</button>
-            <button class="fbtn" id="mClose" style="width:100%">Close</button>`;
+            <h4>⭐ Mumbai Stories</h4>` +
+            G.STORIES.map((st, i) => `<div class="mrow"><div style="flex:1;font-size:12px">${st.name}</div><b style="color:#8fd">₹${st.pay}</b><button class="fbtn" data-story="${i}" style="width:34px">▶</button></div>`).join("") +
+            `<h4>📅 Today's challenges</h4>` +
+            [["earn", "Earn ₹1,500 from missions"], ["disc", "Discover 3 new places"], ["rides", "Take 2 rides"]].map(dd => {
+              const def = DDEF.find(x => x[0] === dd[0]);
+              const pr = Math.min(DAILY.prog[dd[0]] || 0, def[2]);
+              return `<div class="mrow"><span style="flex:1;font-size:11px">${dd[1]}</span><b style="font-size:11px;color:${DAILY.prog.paid[dd[0]] ? "#8f8" : "#8fd"}">${pr}/${def[2]}</b></div>`;
+            }).join("") +
+            `<button class="fbtn" id="mClose" style="width:100%">Close</button>`;
       P(h);
+      document.querySelectorAll("[data-story]").forEach(b => b.onclick = () => { M.startStory(+b.dataset.story); closeP(); });
+      const mmF = q("mMetroF"); if (mmF) mmF.onclick = () => { RIDE.metroFull(); closeP(); };
+      const mtF = q("mTrainF"); if (mtF) mtF.onclick = () => { RIDE.trainFull(); closeP(); };
       document.querySelectorAll("[data-mi]").forEach(b => b.onclick = () => { M.accept(+b.dataset.mi); closeP(); });
       const ab = q("mAb"); if (ab) ab.onclick = () => { M.abandon(); closeP(); };
       const mm = q("mMetro"); if (mm) mm.onclick = () => { RIDE.metro(); closeP(); };
@@ -320,7 +470,9 @@
     }
 
     function garageUI() {
-      let h = `<h3>🚗 Garage & Fuel</h3><div class="mrow"><b>${money()}</b><div style="flex:1"></div><div>⛽ ${Math.round(OWN.fuel * 100)}%</div></div>`;
+      const integ = Math.max(0.15, G.PL.integrity === undefined ? 1 : G.PL.integrity);
+      let h = `<h3>🚗 Garage & Fuel</h3><div class="mrow"><b>${money()}</b><div style="flex:1"></div><div>⛽ ${Math.round(OWN.fuel * 100)}% · ₹${G.fuelPrice().toFixed(2)}/%</div></div>
+      <div class="mrow"><span>🛠️ Vehicle condition ${Math.round(integ * 100)}%</span><div style="flex:1"></div>${integ < 0.99 ? `<button class="fbtn" id="repair" style="width:auto;padding:0 8px;font-size:13px">Repair ₹${Math.ceil((1 - integ) * 8000)}</button>` : "<b style='color:#8f8'>FIT</b>"}</div>`;
       for (const k of Object.keys(PRICES)) {
         const T = G.VEHTYPES[k], has = OWN.owned.includes(k);
         h += `<div class="mrow"><span>${T.icon} ${T.n}</span><div style="flex:1"></div>${has ? `<b style="color:#8f8">OWNED</b>` : `<button class="fbtn" data-buy="${k}" style="width:auto;padding:0 8px;font-size:13px">₹${PRICES[k].toLocaleString("en-IN")}</button>`}</div>`;
@@ -337,8 +489,15 @@
         } else G.emit("toast", "💸 Not enough money (₹" + pr.toLocaleString("en-IN") + "). Take missions! 🎯");
         garageUI();
       });
+      const rp = q("repair");
+      if (rp) rp.onclick = () => {
+        const cost = Math.ceil((1 - Math.max(0.15, G.PL.integrity || 1)) * 8000);
+        if (G.ECON.money >= cost) { G.ECON.money -= cost; G.store.set("money", G.ECON.money); G.PL.integrity = 1; G.emit("toast", "🛠️ Repaired — ₹" + cost); }
+        else G.emit("toast", "💸 Not enough for repairs");
+        garageUI();
+      };
       q("refuel").onclick = () => {
-        const cost = Math.ceil((1 - OWN.fuel) * 100) * 2;
+        const cost = Math.ceil((1 - OWN.fuel) * 100 * G.fuelPrice());
         if (cost <= 0) { G.emit("toast", "⛽ Tank is full"); return; }
         if (G.ECON.money >= cost) { G.ECON.money -= cost; G.store.set("money", G.ECON.money); OWN.fuel = 1; G.store.set("fuel", 1); G.emit("toast", "⛽ Full tank — ₹" + cost); }
         else G.emit("toast", "💸 Not enough for fuel");
@@ -355,7 +514,7 @@
         ph.map((s, i) => `<div style="background:rgba(255,255,255,.06);border-radius:6px;padding:4px"><img src="${s.s}" style="width:100%;border-radius:4px"><div style="font-size:9px;opacity:.8">${s.at}</div><button class="fbtn" data-exp="${i}" style="width:100%;font-size:11px;height:26px">⬇️ export</button></div>`).join("") +
         `</div>${ph.length ? "" : "<p style='opacity:.7'>No postcards yet.</p>"}
       <h4>🏆 Achievements</h4>` +
-        ["explorer|City Explorer|discover 25 places", "chronicler|Chronicler|own 5 postcards", "worker|Working for the city|5 missions", "rich|Crorepati-in-training|₹1,00,000", "boroughs|Knows the Boroughs|8 districts"]
+        ["explorer1|Wanderer|10 places", "explorer2|City Explorer|30 places", "explorer3|The 780|70 places", "chron1|Postcard home|3 postcards", "chron2|Chronicle|6 postcards", "worker1|Working for the city|5 missions", "worker2|Backbone|15 missions", "worker3|Mumbai's own|40 missions", "rich1|First lakh|₹1L", "rich2|Serious money|₹5L", "boro1|Hopping|5 districts", "boro2|Boroughs|9 districts", "boro3|Whole city|14 districts"]
           .map(a => { const [id, n, d] = a.split("|"); return `<div class="mrow"><span>${ACH.got[id] ? "🏆" : "◻️"} ${n}</span><div style="flex:1"></div><span style="font-size:10px;opacity:.7">${d}</span></div>`; }).join("") +
         `<button class="fbtn" id="bkClose" style="width:100%">Close</button>`;
       P(h);
@@ -376,6 +535,10 @@
       <div class="mrow"><label style="flex:1"><input type="checkbox" id="sQ" ${S.quality ? "checked" : ""}> High graphics</label></div>
       <div class="mrow"><label style="flex:1"><input type="checkbox" id="sS" ${S.sound ? "checked" : ""}> Sound</label></div>
       <div class="mrow"><label style="flex:1"><input type="checkbox" id="sL" ${S.labels ? "checked" : ""}> District name signs</label></div>
+      <div class="mrow"><h4 style="margin:0">Language</h4>${[["en", "EN"], ["hi", "हिं"], ["mr", "मरा"]].map(l => `<button class="fbtn" data-lang="${l[0]}" style="width:46px;${S.lang === l[0] ? "border-color:#8fd" : ""}">${l[1]}</button>`).join("")}</div>
+      <div class="mrow"><label style="flex:1"><input type="checkbox" id="sInv" ${S.invert ? "checked" : ""}> Invert look drag</label></div>
+      <div class="mrow"><button class="fbtn" id="sExport" style="flex:1">⬆️ Export save</button><button class="fbtn" id="sImport" style="flex:1">⬇️ Import save</button></div>
+      <div class="mrow"><textarea id="sXfer" style="width:100%;height:64px;font:10px monospace" placeholder="save text appears here / paste here to import"></textarea></div>
       <div class="mrow"><h4 style="margin:0">Save slot</h4>${["A", "B", "C"].map(s => `<button class="fbtn" data-slot="${s}" style="width:40px;${S.slot === s ? "border-color:#8fd" : ""}">${s}</button>`).join("")}</div>
       <div class="mrow"><button class="fbtn" id="sReset" style="width:100%;color:#f88">Erase this slot's progress</button></div>
       <button class="fbtn" id="sClose" style="width:100%">Close</button>`;
@@ -383,6 +546,24 @@
       q("sQ").onchange = e => { S.quality = e.target.checked ? 1 : 0; saveS(); applyQuality(); };
       q("sS").onchange = e => { S.sound = e.target.checked ? 1 : 0; saveS(); applySound(); };
       q("sL").onchange = e => { S.labels = e.target.checked ? 1 : 0; saveS(); applyLabels(); };
+      q("sInv").onchange = e => { S.invert = e.target.checked ? 1 : 0; saveS(); };
+      document.querySelectorAll("[data-lang]").forEach(b => b.onclick = () => { S.lang = b.dataset.lang; saveS(); settingsUI(); });
+      q("sExport").onclick = () => {
+        const keys = ["save", "save_A", "save_B", "save_C", "settings", "owned", "fuel", "money", "visited", "ach", "missionsDone", "photos", "districts", "tutDone"];
+        const dump = {};
+        keys.forEach(k => { const v = G.store.get(k, undefined); if (v !== undefined && v !== null) dump[k] = v; });
+        const txt = JSON.stringify(dump);
+        q("sXfer").value = txt;
+        try { navigator.clipboard.writeText(txt).then(() => G.emit("toast", "⬆️ Save copied to clipboard"), () => G.emit("toast", "⬆️ Save text ready — copy it")); } catch (e) { G.emit("toast", "⬆️ Save text ready — copy it"); }
+      };
+      q("sImport").onclick = () => {
+        try {
+          const dump = JSON.parse(q("sXfer").value);
+          Object.keys(dump).forEach(k => G.store.set(k, dump[k]));
+          G.emit("toast", "⬇️ Imported — restart the app to load it");
+          closeP();
+        } catch (e) { G.emit("toast", "Import failed — paste a valid save text first"); }
+      };
       document.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => {
         S.slot = b.dataset.slot; saveS();
         const sv = G.store.get("save_" + S.slot, null);
@@ -411,6 +592,24 @@
     q("bHand").onclick = () => { RIDE.alight(); q("bHand").style.display = "none"; };
     const storedErr = G.store.get("lastError", null);
     if (storedErr) { const b = q("bBug"); b.textContent = "🐞!"; b.style.color = "#ff8080"; }
+
+    // ---- look-around: drag the RIGHT half of the 3D canvas
+    const cv3 = document.getElementById("game3d");
+    if (cv3) {
+      let lx = 0, ly = 0, pid = null;
+      cv3.addEventListener("pointerdown", (e) => {
+        if (e.clientX < window.innerWidth * 0.45) return;
+        pid = e.pointerId; lx = e.clientX; ly = e.clientY; LOOK.drag = true;
+      });
+      cv3.addEventListener("pointermove", (e) => {
+        if (!LOOK.drag || e.pointerId !== pid) return;
+        LOOK.yaw += (e.clientX - lx) * 0.006;
+        LOOK.pitch = Math.max(-0.8, Math.min(0.8, LOOK.pitch + (e.clientY - ly) * 0.004));
+        lx = e.clientX; ly = e.clientY;
+      });
+      const up = () => { LOOK.drag = false; pid = null; };
+      cv3.addEventListener("pointerup", up); cv3.addEventListener("pointercancel", up);
+    }
 
     // ---------------- P1: tutorial ----------------
     const TUT = [
@@ -495,6 +694,54 @@
     T._gullSeed = [];
     for (let i = 0; i < 18; i++) T._gullSeed.push([Math.random() * Math.PI * 2, 120 + Math.random() * 380]);
     // district label sprites
+    // petrol pump markers (blue pillars)
+    const pumpPos = new Float32Array(G.FUELSTATIONS.length * 3);
+    G.FUELSTATIONS.forEach((fp, i) => { pumpPos[i * 3] = fp.x; pumpPos[i * 3 + 1] = 60; pumpPos[i * 3 + 2] = fp.y; });
+    const pumpGeo = new THREE.BufferGeometry();
+    pumpGeo.setAttribute("position", new THREE.BufferAttribute(pumpPos, 3));
+    T.pumps = new THREE.Points(pumpGeo, new THREE.PointsMaterial({ color: 0x66aaff, size: 26, transparent: true, opacity: 0.85, depthWrite: false }));
+    T.pumps.frustumCulled = false; T.scene.add(T.pumps);
+    // crowds (people = body+head instanced)
+    const crowdN = 120;
+    T.crowdBody = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.5, 1.55, 5), new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }), crowdN);
+    T.crowdHead = new THREE.InstancedMesh(new THREE.SphereGeometry(0.28, 5, 4), new THREE.MeshLambertMaterial({ color: 0xc09878 }), crowdN);
+    T.crowdBody.instanceMatrix.setUsage(THREE.DynamicDrawUsage); T.crowdHead.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    T.crowdBody.frustumCulled = false; T.crowdHead.frustumCulled = false;
+    T.scene.add(T.crowdBody); T.scene.add(T.crowdHead);
+    T._crowdSeed = [];
+    for (let i = 0; i < crowdN; i++) T._crowdSeed.push([Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 6.28, 0.5 + Math.random()]);
+    // sea link toll gantries
+    T.tollBooms = [];
+    for (const g of SEALINK_GATES) {
+      const grp = new THREE.Group();
+      const pm = new THREE.MeshLambertMaterial({ color: 0x8892a0 });
+      const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 9, 6), pm); p1.position.set(-8, 4.5, 0); grp.add(p1);
+      const p2 = p1.clone(); p2.position.x = 8; grp.add(p2);
+      const boom = new THREE.Mesh(new THREE.BoxGeometry(15, 0.45, 0.45), new THREE.MeshLambertMaterial({ color: 0xd04040 }));
+      boom.position.set(0, 6.4, 0); grp.add(boom);
+      grp.position.set(g.x, G.TERRAIN ? Math.max(2, G.TERRAIN.elev(g.x, g.y)) : 2, g.y);
+      grp.rotation.y = 0.3;
+      T.scene.add(grp);
+      T.tollBooms.push({ boom, g });
+    }
+    // ganpati procession (people + floats)
+    T.gpPpl = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.5, 1.6, 5), new THREE.MeshLambertMaterial({ color: 0xe8b050 }), 40);
+    T.gpFloats = new THREE.InstancedMesh(new THREE.BoxGeometry(3.2, 2.6, 2.4), new THREE.MeshLambertMaterial({ color: 0xd060a0 }), 3);
+    T.gpCanopy = new THREE.InstancedMesh(new THREE.ConeGeometry(2.6, 1.2, 6), new THREE.MeshLambertMaterial({ color: 0xffd060 }), 3);
+    [T.gpPpl, T.gpFloats, T.gpCanopy].forEach(m => { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; T.scene.add(m); });
+    // fireworks
+    T.fwRocket = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(3), 3)), new THREE.PointsMaterial({ color: 0xffe0a0, size: 22, transparent: true, opacity: 0 }));
+    T.fwBurst = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(42 * 3), 3)), new THREE.PointsMaterial({ color: 0xffd0d0, size: 14, transparent: true, opacity: 0 }));
+    T.fwRocket.frustumCulled = false; T.fwBurst.frustumCulled = false;
+    T.scene.add(T.fwRocket); T.scene.add(T.fwBurst);
+    T._fw = { t: 0, phase: 0, site: 0, base: [0, 0] };
+    // golden-hour sun sprite
+    const sc = document.createElement("canvas"); sc.width = sc.height = 64;
+    const sg = sc.getContext("2d"); const sgr = sg.createRadialGradient(32, 32, 3, 32, 32, 32);
+    sgr.addColorStop(0, "rgba(255,230,170,1)"); sgr.addColorStop(0.4, "rgba(255,190,110,.95)"); sgr.addColorStop(1, "rgba(255,160,60,0)");
+    sg.fillStyle = sgr; sg.fillRect(0, 0, 64, 64);
+    T.sunSprite = new THREE.Mesh(new THREE.PlaneGeometry(1300, 1300), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, opacity: 0, fog: false, depthWrite: false }));
+    T.sunSprite.frustumCulled = false; T.scene.add(T.sunSprite);
     T.labels = new THREE.Group();
     for (const d of DISTRICTS) {
       const cv = document.createElement("canvas"); cv.width = 512; cv.height = 96;
@@ -510,6 +757,176 @@
     T.scene.add(T.labels);
     sky3dDone = true;
     if (DOM) applyLabels();
+  }
+
+  // ---------------- living-world effects (per frame inside the render wrapper) ----------------
+  const LOOK = G.LOOK = { yaw: 0, pitch: 0, drag: false };
+  let lastV = null, fpsE = 60, fpsLow = 0, floodOn = false;
+  function effectsTick(dt) {
+    const T = G.TW, env = G.ENV, pl = G.PL, THREE = window.THREE;
+    const day = env.sun().day;
+    const golden = Math.max(0, 1 - Math.abs(env.sun().alt) / 0.22) * (env.sun().alt > -0.22 ? 1 : 0);
+    // ---- look camera (post-orig rotation for CHASE/WALK-ish cams)
+    if (!LOOK.drag) { LOOK.yaw *= 0.986; LOOK.pitch *= 0.986; }
+    if ((Math.abs(LOOK.yaw) > 0.005 || Math.abs(LOOK.pitch) > 0.005) && T.camMode !== 3) {
+      const dir = S.invert ? -1 : 1;
+      const px = pl.x, pz = pl.y, elev = G.TERRAIN.elev(pl.x, pl.y);
+      const dx = T.cam.position.x - px, dz = T.cam.position.z - pz;
+      const a = LOOK.yaw * dir, ca = Math.cos(a), sa = Math.sin(a);
+      T.cam.position.x = px + dx * ca - dz * sa;
+      T.cam.position.z = pz + dx * sa + dz * ca;
+      T.cam.position.y = elev + (T.cam.position.y - elev) * Math.exp(-LOOK.pitch * dir);
+      T.cam.lookAt(px, elev + 2, pz);
+    }
+    // ---- sun + golden tint
+    if (T.sunSprite) {
+      const az = (env.t / 86400) * Math.PI * 2 - Math.PI / 2;
+      const alt = env.sun().alt;
+      T.sunSprite.position.set(pl.x + Math.cos(az) * 9000, Math.sin(alt) * 8000 + 400, pl.y + Math.sin(az) * 9000);
+      T.sunSprite.material.opacity = Math.max(0, Math.min(1, alt * 8));
+      T.sunSprite.lookAt(T.cam.position);
+      if (T.renderer && T._baseClear === undefined) { try { T._baseClear = T.renderer.getClearColor(new THREE.Color()).clone(); } catch (e) { T._baseClear = new THREE.Color(0x87ceeb); } }
+      if (T.renderer && T._baseClear) {
+        const c = T._baseClear.clone().lerp(new THREE.Color(0xff9a55), Math.min(0.55, golden * 0.55));
+        try { T.renderer.setClearColor(c, 1); } catch (e) { }
+      }
+    }
+    // ---- monsoon flooding
+    if (T.water) {
+      const flood = Math.max(0, env.rain - 0.5) * 6;
+      T.water.position.y = 1.0 + env.tide() * 0.35 + flood;
+      if (T.waterMat) { try { T.waterMat.color.setHex(0x2a4a5a).lerp(new THREE.Color(0x6a5f49), Math.min(0.7, flood / 2)); } catch (e) { } }
+      if (flood > 0.7 && !floodOn) { floodOn = true; G.emit("toast", "🌊 Monsoon flooding — low-lying roads are under water"); }
+      if (flood < 0.1) floodOn = false;
+    }
+    // ---- crash damage (sudden deceleration while driving)
+    if (lastV !== null && pl.mode !== "foot" && lastV - (pl.v || 0) > 9 && (pl.v || 0) < 5) {
+      pl.integrity = Math.max(0.15, (pl.integrity === undefined ? 1 : pl.integrity) - 0.25);
+      G.emit("toast", G.T("crash"));
+    }
+    lastV = pl.v || 0;
+    // ---- crowds near POIs
+    if (T.crowdBody && day > 0.15 && env.rain < 0.5) {
+      const near = G.POI.nearby(pl.x, pl.y, 420);
+      let n = 0;
+      const m = T._m4, q4 = T._q, sc3 = T._s, pv = T._p, col = T._col;
+      const t = performance.now() / 1000;
+      const per = Math.max(4, Math.floor(T._crowdSeed.length / Math.max(1, near.length)));
+      for (const poi of near) {
+        for (let k = 0; k < per && n < T._crowdSeed.length; k++) {
+          const sd = T._crowdSeed[n];
+          const wx = poi.x + sd[0] * 70 + Math.cos(t * sd[3] + sd[2]) * 4;
+          const wz = poi.y + sd[1] * 70 + Math.sin(t * sd[3] + sd[2]) * 4;
+          const ey = G.TERRAIN.elev(wx, wz);
+          pv.set(wx, ey + 0.8 + Math.abs(Math.sin(t * sd[3] * 2 + sd[2])) * 0.06, wz);
+          q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t * sd[3] + sd[2]);
+          sc3.set(1, 1, 1); m.compose(pv, q4, sc3);
+          T.crowdBody.setMatrixAt(n, m);
+          pv.set(wx, ey + 1.75, wz); m.compose(pv, q4, sc3);
+          T.crowdHead.setMatrixAt(n, m);
+          n++;
+        }
+        if (n >= T._crowdSeed.length) break;
+      }
+      T.crowdBody.count = n; T.crowdHead.count = n;
+      T.crowdBody.instanceMatrix.needsUpdate = true; T.crowdHead.instanceMatrix.needsUpdate = true;
+      T.crowdBody.visible = true; T.crowdHead.visible = true;
+    } else if (T.crowdBody) { T.crowdBody.visible = false; T.crowdHead.visible = false; }
+    // ---- sea link tolls
+    for (const tb of (T.tollBooms || [])) {
+      const g = tb.g;
+      const d = Math.hypot(pl.x - g.x, pl.y - g.y);
+      g.open += ((d < 30 ? 1 : 0) - g.open) * Math.min(1, dt * 2.2);
+      tb.boom.rotation.z = -1.35 * g.open;
+      if (d < 20 && performance.now() - g.last > 90000 && (pl.v || 0) > 0.5) {
+        g.last = performance.now();
+        if (G.ECON.money >= 60) { G.ECON.money -= 60; G.store.set("money", G.ECON.money); G.emit("toast", "🛣️ Sea Link toll ₹" + 60 + " — " + g.side + " side"); }
+        else G.emit("toast", "🛣️ Toll unpaid at " + g.side + " — they noted your plate!");
+      }
+    }
+    // ---- ganpati procession (seasonal)
+    if (T.gpPpl) {
+      const on = isGanpati();
+      T.gpPpl.visible = on; T.gpFloats.visible = on; T.gpCanopy.visible = on;
+      if (on) {
+        const dMid = Math.hypot(pl.x - GANPATI_ROUTE[1][0], pl.y - GANPATI_ROUTE[1][1]);
+        if (dMid < 1600) {
+          T._gpT = (T._gpT || 0) + dt * 2.2;
+          const span = 26, m = T._m4, q4 = T._q, sc3 = T._s, pv = T._p;
+          for (let i = 0; i < 40; i++) {
+            const u = ((T._gpT + i * 2.1) % (GANPATI_ROUTE.length - 1));
+            const si = Math.min(GANPATI_ROUTE.length - 2, Math.floor(u));
+            const ft = u - si;
+            const a = GANPATI_ROUTE[si], b = GANPATI_ROUTE[si + 1];
+            const ox = Math.sin(i * 2.4) * 6, oz = Math.cos(i * 1.7) * 6;
+            const ey = G.TERRAIN.elev(a[0] + (b[0] - a[0]) * ft + ox, a[1] + (b[1] - a[1]) * ft + oz);
+            pv.set(a[0] + (b[0] - a[0]) * ft + ox, ey + 0.8, a[1] + (b[1] - a[1]) * ft + oz);
+            q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(b[0] - a[0], b[1] - a[1]));
+            sc3.set(1, 1, 1); m.compose(pv, q4, sc3); T.gpPpl.setMatrixAt(i, m);
+          }
+          for (let i = 0; i < 3; i++) {
+            const u = ((T._gpT * 0.5 + i * 12) % (GANPATI_ROUTE.length - 1));
+            const si = Math.min(GANPATI_ROUTE.length - 2, Math.floor(u));
+            const ft = u - si;
+            const a = GANPATI_ROUTE[si], b = GANPATI_ROUTE[si + 1];
+            const ey = G.TERRAIN.elev(a[0] + (b[0] - a[0]) * ft, a[1] + (b[1] - a[1]) * ft);
+            pv.set(a[0] + (b[0] - a[0]) * ft, ey + 1.3, a[1] + (b[1] - a[1]) * ft);
+            q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(b[0] - a[0], b[1] - a[1]));
+            sc3.set(1, 1, 1); m.compose(pv, q4, sc3); T.gpFloats.setMatrixAt(i, m);
+            pv.y = ey + 3.2; m.compose(pv, q4, sc3); T.gpCanopy.setMatrixAt(i, m);
+          }
+          T.gpPpl.instanceMatrix.needsUpdate = true; T.gpFloats.instanceMatrix.needsUpdate = true; T.gpCanopy.instanceMatrix.needsUpdate = true;
+          if (!T._gpAnnounced) { T._gpAnnounced = true; G.emit("toast", "🪔 गणपती बाप्पा मोरया! The visarjan procession is out."); }
+        }
+      }
+    }
+    // ---- fireworks (select dates, after dark, near Marine Drive)
+    if (T.fwRocket && isFireworks() && day < 0.2) {
+      const d0 = Math.hypot(pl.x - MD_FIREWORKS[0][0], pl.y - MD_FIREWORKS[0][1]);
+      if (d0 < 3000) {
+        const st = T._fw;
+        st.t += dt;
+        if (st.phase === 0 && st.t > 2.2) {
+          st.t = 0; st.phase = 1;
+          const site = MD_FIREWORKS[(st.site++) % MD_FIREWORKS.length];
+          st.base = [site[0] + (Math.random() - 0.5) * 300, site[1] + (Math.random() - 0.5) * 200];
+          st.h = 0; st.peak = 200 + Math.random() * 80;
+          const rp = T.fwRocket.geometry.attributes.position;
+          rp.setXYZ(0, st.base[0], G.TERRAIN.elev(st.base[0], st.base[1]) + st.h, st.base[1]);
+          rp.needsUpdate = true;
+          T.fwRocket.material.opacity = 1;
+        } else if (st.phase === 1) {
+          st.h += dt * 110;
+          const rp = T.fwRocket.geometry.attributes.position;
+          rp.setXYZ(0, st.base[0], G.TERRAIN.elev(st.base[0], st.base[1]) + st.h, st.base[1]);
+          rp.needsUpdate = true;
+          if (st.h >= st.peak) {
+            st.phase = 2; st.t = 0;
+            T.fwRocket.material.opacity = 0;
+            T.fwBurst.material.color.setHSL(Math.random(), 0.75, 0.65);
+            const bp = T.fwBurst.geometry.attributes.position;
+            for (let i = 0; i < 42; i++) {
+              const a2 = (i / 42) * Math.PI * 2, r2 = (i % 3) * 14 + 8;
+              bp.setXYZ(i, st.base[0] + Math.cos(a2) * r2, st.peak + Math.sin(a2 * 1.3) * r2, st.base[1] + Math.sin(a2) * r2);
+            }
+            bp.needsUpdate = true;
+            T.fwBurst.material.opacity = 1;
+          }
+        } else if (st.phase === 2) {
+          T.fwBurst.material.opacity = Math.max(0, 1 - st.t / 1.4);
+          if (st.t > 1.4) { st.phase = 0; st.t = 0; T.fwBurst.material.opacity = 0; }
+        }
+      }
+    }
+    // ---- auto low-end profile
+    if (T.renderer) {
+      try {
+        const info = T.renderer.info;
+        fpsE = fpsE * 0.97 + (1 / Math.max(0.016, dt || 0.016)) * 0.03;
+        if (S.quality && fpsE < 27) { fpsLow += dt; if (fpsLow > 4) { S.quality = 0; saveS(); applyQuality(); G.emit("toast", "⚙️ Low graphics mode enabled automatically"); } }
+        else fpsLow = 0;
+      } catch (e) { }
+    }
   }
 
   // ---------------- per-frame 3D hook (wraps TW.render) ----------------
@@ -549,6 +966,7 @@
           T.gulls.visible = day > 0.2;
         }
         RIDE.update(dt);
+        effectsTick(dt);
       } catch (e) { /* never break the render loop */ }
       return out;
     };

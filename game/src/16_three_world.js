@@ -535,27 +535,36 @@
       g.setAttribute("color", new THREE.BufferAttribute(vc, 3));
     }
     if (!geos.length) return;
-    // merge non-indexed geoms (position+normal+uv+color)
-    let count = 0;
-    geos.forEach(g => count += g.attributes.position.count);
-    const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3);
-    let o = 0;
-    geos.forEach(g => {
-      pos.set(g.attributes.position.array, o * 3);
-      if (g.attributes.normal) nor.set(g.attributes.normal.array, o * 3);
-      if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
-      col.set(g.attributes.color.array, o * 3);
-      o += g.attributes.position.count;
-    });
-    const merged = new THREE.BufferGeometry();
-    merged.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    merged.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
-    merged.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-    merged.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
-    mesh.position.y = 0;
-    area.mesh = mesh;
-    TW.scene.add(mesh);
+    // merge in CHUNKS (<=900 buildings) so huge districts stream in pieces
+    const CH = 900;
+    area.meshes = [];
+    for (let c0 = 0; c0 < geos.length; c0 += CH) {
+      const part = geos.slice(c0, c0 + CH);
+      let count = 0;
+      part.forEach(g => count += g.attributes.position.count);
+      const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3);
+      let o = 0, sx = 0, sz = 0, np = 0;
+      part.forEach(g => {
+        pos.set(g.attributes.position.array, o * 3);
+        if (g.attributes.normal) nor.set(g.attributes.normal.array, o * 3);
+        if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
+        col.set(g.attributes.color.array, o * 3);
+        for (let i = 0; i < g.attributes.position.count; i += 30) { sx += g.attributes.position.getX(i); sz += g.attributes.position.getZ(i); np++; }
+        o += g.attributes.position.count;
+      });
+      const merged = new THREE.BufferGeometry();
+      merged.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      merged.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+      merged.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      merged.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      const mesh = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true }));
+      const ccx = np ? sx / np : area.cx, ccz = np ? sz / np : area.cy;
+      mesh.position.y = Math.max(0, elevAt(ccx, ccz) - 2);
+      mesh.userData._c = [ccx, ccz];
+      TW.scene.add(mesh);
+      area.meshes.push({ mesh, cx: ccx, cy: ccz });
+    }
+    area.mesh = area.meshes[0].mesh;
   }
 
   function rebuildBuildings() {
@@ -1049,8 +1058,11 @@
     }
     for (const ra of TW.realAreas) {
       const want = G.dist(pl.x, pl.y, ra.cx, ra.cy) < 9000;
-      if (want && !ra.mesh) { ensureRealBuildings(ra); if (ra.mesh) G.emit("toast", "🏙️ Real footprints loaded: " + ra.name); }
-      if (ra.mesh) { ra.mesh.visible = want; ra.mesh.position.y = Math.max(0, elevAt(ra.cx, ra.cy) - 2); }
+      if (want && !ra.meshes) { ensureRealBuildings(ra); if (ra.meshes) G.emit("toast", "🏙️ Real footprints loaded: " + ra.name); }
+      if (ra.meshes) for (const ch of ra.meshes) {
+        const vis = want && G.dist(pl.x, pl.y, ch.cx, ch.cy) < 9000;
+        ch.mesh.visible = vis;
+      }
     }
     // landmark + station culling; vegetation streaming
     for (const lm of TW.lms) lm.g.visible = G.dist(pl.x, pl.y, lm.x, lm.z) < 10000;

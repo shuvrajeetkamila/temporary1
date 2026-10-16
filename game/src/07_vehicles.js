@@ -12,6 +12,7 @@
     auto:     { n: "Auto Rickshaw", icon: "🛺", vmax: 24, acc: 3.4, brake: 11, steer: 2.6, col: "#202020", road: 1 },
     bike:     { n: "Motorbike", icon: "🏍️", vmax: 29, acc: 5, brake: 13, steer: 3.0, col: "#c03030", road: 1 },
     truck:    { n: "JNPT Container Truck", icon: "🚛", vmax: 21, acc: 1.4, brake: 7, steer: 1.2, col: "#7080c0", road: 1 },
+    bus:      { n: "BEST Bus", icon: "🚌", vmax: 19, acc: 1.5, brake: 9, steer: 1.3, col: "#d84040", road: 1 },
     boat:     { n: "Ferry Boat", icon: "⛴️", vmax: 11, acc: 1.2, brake: 3, steer: 0.9, col: "#e8e8e8", water: true },
     speed:    { n: "Speedboat", icon: "🚤", vmax: 24, acc: 3.5, brake: 6, steer: 1.6, col: "#f0f0f0", water: true },
     plane:    { n: "Cessna (Juhu/CSMIA)", icon: "✈️", vmax: 92, acc: 4.2, brake: 8, steer: 1.4, col: "#f4f4f4", air: true },
