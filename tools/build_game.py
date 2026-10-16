@@ -9,7 +9,7 @@ OUT = "www/index.html"
 FILES = [
     "00_boot.js", "01_geo.js", "gen/pois.js", "03_core.js", "04_camera_input.js",
     "05_weather.js", "06_render.js", "07_vehicles.js", "08_traffic.js",
-    "09_npcs.js", "15_economy.js", "11_map_ui.js", "12_ui.js", "13_audio.js", "16_three_world.js", "14_main.js",
+    "09_npcs.js", "15_economy.js", "11_map_ui.js", "12_ui.js", "13_audio.js", "16_three_world.js", "14_main.js", "17_features.js",
 ]
 
 def main():

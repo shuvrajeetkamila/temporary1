@@ -44,7 +44,7 @@ def x_m(lat, lon):
 
 
 def _height(tags, hashh, seedx, seedy):
-    bh = tags.get("height")
+    bh = tags.get("height") or tags.get("height_m")
     if bh:
         try: return round(min(float(bh.replace("m", "").strip()), 320), 1)
         except ValueError: pass
@@ -65,23 +65,28 @@ def parse(path, hashh):
         d = json.load(open(path, encoding="utf-8"))
         for f in d.get("features", []):
             g = f.get("geometry", {})
-            if g.get("type") != "Polygon" or not g.get("coordinates"):
-                continue
-            ring = g["coordinates"][0]
-            if len(ring) < 3:
-                continue
-            pts = [x_m(r[1], r[0]) for r in ring]
-            if pts[0] == pts[-1]:
-                pts = pts[:-1]
-            if len(pts) < 3:
-                continue
-            cx = sum(p[0] for p in pts) // len(pts)
-            cy = sum(p[1] for p in pts) // len(pts)
-            h = _height({}, hashh, cx, cy)
-            flat = []
-            for (x, y) in pts:
-                flat += [x, y]
-            bldgs.append({"h": h, "p": flat})
+            polys = []
+            if g.get("type") == "Polygon" and g.get("coordinates"):
+                polys = [g["coordinates"]]
+            elif g.get("type") == "MultiPolygon" and g.get("coordinates"):
+                polys = g["coordinates"]
+            props = {k: str(v) for k, v in (f.get("properties") or {}).items() if v is not None}
+            for poly in polys:
+                ring = poly[0] if poly else None
+                if not ring or len(ring) < 3:
+                    continue
+                pts = [x_m(r[1], r[0]) for r in ring]
+                if pts[0] == pts[-1]:
+                    pts = pts[:-1]
+                if len(pts) < 3:
+                    continue
+                cx = sum(q[0] for q in pts) // len(pts)
+                cy = sum(q[1] for q in pts) // len(pts)
+                h = _height(props, hashh, cx, cy)
+                flat = []
+                for (x, y) in pts:
+                    flat += [x, y]
+                bldgs.append({"h": h, "p": flat})
         return bldgs
     tree = ET.parse(path)
     root = tree.getroot()
