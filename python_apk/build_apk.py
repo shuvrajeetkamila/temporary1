@@ -74,8 +74,8 @@ def build_manifest():
     label = ("ref", 0x7F020000)  # @string/app_name
     manifest = axml.Node("manifest", [
         (None, "package", package),
-        A("versionCode", ("int", 12)),
-        A("versionName", "2.2"),
+        A("versionCode", ("int", 13)),
+        A("versionName", "2.3"),
     ], [
         axml.Node("uses-sdk", [
             A("minSdkVersion", ("int", 21)),
@@ -146,12 +146,22 @@ def sf_file(manifest_bytes, sections):
     return "".join(out).encode("utf-8")
 
 
+KEY_PATH = os.path.join(ROOT, "android", "keystore", "signing_key.pem")
+CERT_PATH = os.path.join(ROOT, "android", "keystore", "signing_cert.pem")
+
+
 def make_cert():
+    """Stable project identity: reuse the same key for every build so updates
+    install OVER previous versions (Android refuses signature mismatches)."""
     from cryptography import x509
     from cryptography.x509.oid import NameOID
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
     import time
+    if os.path.exists(KEY_PATH) and os.path.exists(CERT_PATH):
+        key = serialization.load_pem_private_key(open(KEY_PATH, "rb").read(), password=None)
+        cert = x509.load_pem_x509_certificate(open(CERT_PATH, "rb").read())
+        return key, cert
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, u"Island Realm Debug"),
@@ -165,6 +175,11 @@ def make_cert():
             .not_valid_before(now - datetime.timedelta(days=1))
             .not_valid_after(now + datetime.timedelta(days=3650))
             .sign(key, hashes.SHA256()))
+    os.makedirs(os.path.dirname(KEY_PATH), exist_ok=True)
+    open(KEY_PATH, "wb").write(key.private_bytes(serialization.Encoding.PEM,
+                                                  serialization.PrivateFormat.PKCS8,
+                                                  serialization.NoEncryption()))
+    open(CERT_PATH, "wb").write(cert.public_bytes(serialization.Encoding.PEM))
     return key, cert
 
 
