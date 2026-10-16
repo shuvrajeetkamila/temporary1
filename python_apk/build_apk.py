@@ -74,8 +74,8 @@ def build_manifest():
     label = ("ref", 0x7F020000)  # @string/app_name
     manifest = axml.Node("manifest", [
         (None, "package", package),
-        A("versionCode", ("int", 11)),
-        A("versionName", "2.1"),
+        A("versionCode", ("int", 12)),
+        A("versionName", "2.2"),
     ], [
         axml.Node("uses-sdk", [
             A("minSdkVersion", ("int", 21)),
@@ -219,9 +219,118 @@ def assemble(dex, index_html, out_path):
         z.writestr(zipfile.ZipInfo("META-INF/MANIFEST.MF"), manifest_bytes)
         z.writestr(zipfile.ZipInfo("META-INF/CERT.SF"), sf)
         z.writestr(zipfile.ZipInfo("META-INF/CERT.RSA"), p7)
-    print(f"  signed apk: {out_path} ({os.path.getsize(out_path)} bytes)")
+    blen = add_v2_signature(out_path, key, cert)
+    print(f"  signed apk: {out_path} ({os.path.getsize(out_path)} bytes, v2 block {blen} B + v1)")
     return manifest_xml
 
+
+# ---------------- 3b. APK Signature Scheme v2 (Android 7+ install path) ----------------
+V2_BLOCK_ID = 0x7109871A
+V2_ALGO_RSA_PKCS1_SHA256_CHUNKED = 0x0103
+MAGIC = b"APK Sig Block 42"
+
+
+def _lp(b):
+    return len(b).to_bytes(4, "little") + b
+
+
+def _u32(x):
+    return x.to_bytes(4, "little")
+
+
+def _u64(x):
+    return x.to_bytes(8, "little")
+
+
+def _chunk_digest(chunk, hasher):
+    return hasher(b"\xa5" + _u32(len(chunk)) + chunk).digest()
+
+
+def _apk_content_digests(data, sb_offset, sb_len, hasher):
+    """Digests over: entries region | central directory | EOCD (cd field -> sb_offset)."""
+    # locate EOCD ourselves (no zip64 in our APKs)
+    eocd_off = data.rfind(b"PK\x05\x06")
+    assert eocd_off != -1
+    cd_off = int.from_bytes(data[eocd_off + 16:eocd_off + 20], "little")
+    assert cd_off == sb_offset, "signing block must be inserted at the CD offset"
+    digests = []
+    def feed(buf):
+        for i in range(0, len(buf), 1048576):
+            digests.append(_chunk_digest(buf[i:i + 1048576], hasher))
+    feed(data[:cd_off])                       # 1) zip entries region
+    feed(data[cd_off:eocd_off])               # 2) central directory (original bytes)
+    eocd = bytearray(data[eocd_off:])         # 3) EOCD with cd_offset field = sb_offset
+    eocd[16:20] = _u32(sb_offset)
+    feed(bytes(eocd))
+    top = hasher(b"\x5a" + _u32(len(digests)) + b"".join(digests)).digest()
+    return top, cd_off, eocd_off
+
+
+def add_v2_signature(out_path, key, cert):
+    """Insert a valid v2 signing block before the central directory, in place."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    import hashlib
+    data = open(out_path, "rb").read()
+
+    algo = V2_ALGO_RSA_PKCS1_SHA256_CHUNKED
+    cert_der = cert.public_bytes(serialization.Encoding.DER)
+    pub_spki = cert.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+
+    def make_fields(digest32, sig_bytes):
+        # digest record = lenPrefix(u32 algo | lenPrefix(digest)); section = lenPrefix(records)
+        digest_rec = _u32(algo) + _lp(digest32)
+        digests_sec = _lp(_lp(digest_rec))
+        sig_rec = _u32(algo) + _lp(sig_bytes)
+        sigs_sec = _lp(_lp(sig_rec))
+        # signed data = digests section | certificates section | attributes section
+        signed_data = digests_sec + _lp(_lp(cert_der)) + _lp(b"")
+        return signed_data, sig_rec, sigs_sec
+
+    def build_block(digest32, sig_placeholder_len):
+        signed_data, sig_rec, sigs_sec = make_fields(digest32, b"\x00" * sig_placeholder_len)
+        signer_fields = _lp(signed_data) + sigs_sec + _lp(pub_spki)
+        v2_val = _lp(_lp(signer_fields))  # sequence prefix + signer-record prefix + fields
+        pair = _u64(4 + len(v2_val)) + _u32(V2_BLOCK_ID) + v2_val
+        body = pair
+        size = len(body) + 8 + 16
+        return _u64(size) + body + _u64(size) + MAGIC
+
+    # pass 1: placeholder digest + placeholder sig -> fixes block length
+    probe = build_block(b"\x00" * 32, 256)
+    sb_offset = data.rfind(b"PK\x05\x06")
+    eocd_off0 = sb_offset
+    cd_off0 = int.from_bytes(data[eocd_off0 + 16:eocd_off0 + 20], "little")
+    top, _, _ = _apk_content_digests(data, cd_off0, len(probe), hashlib.sha256)
+    block = build_block(top, 256)
+
+    # sign the exact signed-data bytes (rebuilt identically with the real digest)
+    signed_data, _, _ = make_fields(top, b"\x00" * 256)
+    signature = key.sign(signed_data, padding.PKCS1v15(), hashes.SHA256())
+    _, sig_rec, sigs_sec = make_fields(top, signature)
+    signer_fields = _lp(signed_data) + sigs_sec + _lp(pub_spki)
+    v2_val = _lp(_lp(signer_fields))    # sequence prefix + signer-record prefix + fields
+    pair = _u64(4 + len(v2_val)) + _u32(V2_BLOCK_ID) + v2_val
+    body = pair
+    size = len(body) + 8 + 16
+    assert len(block) == 8 + len(body) + 8 + 16, "block length drifted between passes"
+    block = _u64(size) + body + _u64(size) + MAGIC
+    assert len(block) == len(probe)
+
+    # splice: entries | BLOCK | central directory | EOCD; EOCD's cd_offset
+    # field (at +16 of the EOCD, which sits at the very END of the file)
+    # must then point at the block start (the CD's new home)
+    out = bytearray(data)
+    eocd_off = out.rfind(b"PK\x05\x06")
+    assert eocd_off == len(out) - 22, "EOCD must be the final 22 bytes (no zip comment)"
+    cd_off = int.from_bytes(out[eocd_off + 16:eocd_off + 20], "little")
+    assert data[cd_off:cd_off + 4] == b"PK\x01\x02", "cd_offset must point at the central directory"
+    out[cd_off:cd_off] = block
+    new_eocd = len(out) - 22
+    out[new_eocd + 16:new_eocd + 20] = _u32(cd_off + len(block))
+    open(out_path, "wb").write(bytes(out))
+    return len(block)
 
 # ---------------- 4. external validations ----------------
 def validate(out_path):
