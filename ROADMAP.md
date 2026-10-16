@@ -1,41 +1,47 @@
-# ISLAND REALM — ROADMAP (v3.1 → v4+)
+# ISLAND REALM — REMAINING WORK (as of v4.1)
 
-State after v3.1: APK installs & opens on a real phone, world renders.
-Everything below is ordered by what a player would notice first.
+Built so far: installable APK (real-toolchain build, v1+v2 signed) · boot
+screen + crash reporter · 26 km DEM terrain · 15,565 real OSM streets ·
+3,398 real building footprints in 15 districts · koliwadas, chawls, night
+markets, monsoon clouds/rain · traffic/trains/boats/NPCs · day-night sky
+with stars/moon/rooftop lights · 15 district signs · tutorial, settings,
+3 save slots · missions (delivery/fare/photo/tour) · garage/fuel/challans/
+achievements · rides: metro, local trains, harbour ferry, coastal flight ·
+postcards + export · tests: smoke 15/15 + feature 20/20.
 
-## PHASE 1 — FEEL ALIVE (first thing to build next)
-- [ ] First-run tutorial overlay: how to move, open the map, take a job (2 min, skippable)
-- [ ] Settings: graphics quality (low/high), sound on/off, invert camera
-- [ ] Touch controls tuned: thumb joystick, pinch zoom, bigger buttons
-- [ ] Day-night sky: sun/moon/stars, golden hour, city lights fade-in
-- [ ] Crowds: markets & stations swarm with people; gulls over the harbour
-- [ ] Crash reporter: red errors get saved to a file you can send me
+## A. COMPLETE THE PHASES (short session items)
+- [ ] Camera look/invert option (drag right side to look around; settings toggle)
+- [ ] BEST bus vehicle type + bus-stop boarding (bus is drawn in traffic but not drivable)
+- [ ] Ferry TIMETABLE: named routes (Gateway⇄Mandwa⇄Alibaug) with departure countdowns
+- [ ] Full-line rail rides (ride any line start→end with per-station announcements)
+- [ ] Fuel stations as physical places on the map (drive-in refuel)
+- [ ] Market/station crowds (instanced pedestrians near POIs) — gulls exist, people don't
+- [ ] Golden-hour sky tinting + sun disc
+- [ ] Hindi/Marathi UI strings (spec requires bilingual flavour; toasts + HUD first)
+- [ ] Save-file export/import (share your city between devices)
 
-## PHASE 2 — THE CITY GROWS (10× mass)
-- [ ] 10× more real building footprints (more city datasets + OSM areas: Navi Mumbai, Thane, Panvel)
-- [ ] Named neighbourhoods with local palette + boundary signs (Colaba, Bandra, Dharavi, Vashi…)
-- [ ] Ferry routes between real docks with timetables
-- [ ] All rail lines playable end-to-end, named stations
+## B. MORE REAL DATA (world mass toward the honest GB tier)
+- [ ] Thane, Panvel, Mira-Bhayandar, Kalyan-Dombivli building surveys (same sources as Navi Mumbai)
+- [ ] Street networks east of the harbour (current 7 OSM areas are Mumbai-side)
+- [ ] More height-tagged datasets (height_m sources found once → hunt systematically)
+- [ ] Real SRTM elevation (source host still blocked; keep retrying / drop-in ready)
+- [ ] LOD + streaming hardening for 50k–200k buildings (instancing budgets, fog cull)
 
-## PHASE 3 — THINGS TO DO (game proper)
-- [ ] Mission board from the 780 dossiers: deliveries, rickshaw fares, photo quests
-- [ ] Money that matters: earn, buy vehicles, fuel, repairs
-- [ ] Discovery achievements + postcard collection book
-- [ ] Light traffic rules: fines for mayhem
+## C. GAME DEPTH
+- [ ] Mission chains from the 780 dossiers (multi-step stories with real names/history)
+- [ ] Vehicle running costs (fuel price fluctuation, repairs after crashes)
+- [ ] Crash damage + repair shops
+- [ ] More achievements (tiers: bronze/silver/gold per activity)
+- [ ] Daily challenges (deterministic from the real IST clock)
 
-## PHASE 4 — TRANSIT & TRAVEL
-- [ ] Boardable locals/metro with line announcements
-- [ ] BEST buses on real roads
-- [ ] Airport: cinematic flights between hubs
+## D. SPECTACLE
+- [ ] Monsoon flooding: low-lying areas (DEM < 3 m) flood visually during heavy rain
+- [ ] Ganpati procession crowd event (seasonal, dossier-faithful)
+- [ ] Fireworks at Marine Drive on select dates
+- [ ] SeaLink toll plaza gates that open as you pass
 
-## PHASE 5 — YOUR CITY (persistence)
-- [ ] Multiple save slots; everything you change persists
-- [ ] Shareable postcard export (image + caption)
+## E. INFRA
+- [ ] GitHub Release asset hosting (upload blocked by sandbox proxy — retry each round)
+- [ ] Low-end device profile: reduce instance counts + shadows when fps < 30 (auto)
 
-## PHASE 6 — SPECTACLE (spec-faithful heavy tier)
-- [ ] Full-city footprint tier (100 MB–GB scale) with LOD streaming
-- [ ] Real SRTM elevation when a source is reachable
-- [ ] Monsoon season: flooded low-lying areas, tides
-
-## Build queue order (default)
-1 → 2 → 3, shipping a validated APK every round.
+Order: A first (small, high-visibility), then B (mass), then C/D.
